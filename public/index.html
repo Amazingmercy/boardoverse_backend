@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ludo Game</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <div id="start-screen" class="screen">
+      <h1>Ludo Game</h1>
+      <div class="menu">
+        <button id="create-game" class="btn btn-primary">Create New Game</button>
+        <div class="join-game-container">
+          <input type="text" id="game-id-input" placeholder="Enter Game ID">
+          <button id="join-game" class="btn btn-secondary">Join Game</button>
+        </div>
+        <div class="option-container">
+          <input type="checkbox" id="vs-computer">
+          <label for="vs-computer">Play vs Computer</label>
+        </div>
+      </div>
+    </div>
+
+    <div id="game-screen" class="screen hidden">
+      <div class="game-info">
+        <div class="game-id-display">Game ID: <span id="game-id"></span></div>
+        <div id="status-message"></div>
+      </div>
+      
+      <div class="game-board-container">
+        <div id="game-board" class="game-board">
+          <!-- Board will be rendered here by JavaScript -->
+        </div>
+        
+        <div class="game-controls">
+          <div class="dice-container">
+            <div id="dice-area">
+              <div class="dice" id="dice-1"></div>
+              <div class="dice" id="dice-2"></div>
+            </div>
+            <button id="roll-dice" class="btn btn-action">Roll Dice</button>
+            <button id="skip-turn" class="btn btn-action">Skip Turn</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+  <script src="socket.js"></script>
+  <script src="board.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
