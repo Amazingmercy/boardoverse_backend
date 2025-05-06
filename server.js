@@ -22,7 +22,10 @@ app.use(express.json());
 
 
 app.get('/', (req, res) => {
-    const docPath = path.join(__dirname, 'documentation.md');
+    //const docPath = path.join(__dirname, 'documentation.md');
+    const docPath = path.resolve(__dirname, 'documentation.md');
+    console.log('🛠  Looking for docs at:', docPath, '— exists?', fs.existsSync(docPath));
+
     fs.readFile(docPath, 'utf8', (err, data) => {
         if (err) return res.status(500).send('Could not read documentation file.');
 
