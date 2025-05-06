@@ -23,7 +23,7 @@ app.use(express.json());
 
 app.get('/', (req, res) => {
     //const docPath = path.join(__dirname, 'documentation.md');
-    const docPath = path.resolve(__dirname, 'documentation.md');
+    const docPath = path.resolve(__dirname, 'documentation.MD');
     console.log('🛠  Looking for docs at:', docPath, '— exists?', fs.existsSync(docPath));
 
     fs.readFile(docPath, 'utf8', (err, data) => {
