@@ -1,260 +1,152 @@
-# Ludo Game Server API Documentation
-
 ## Overview
 
-This documentation describes the Socket.IO API endpoints for a multiplayer Ludo-style board game. The game server enables players to create games, join existing games, roll dice, move tokens, and interact with other players in real-time.
+This document describes the architecture and workflow of the multiplayer Ludo game backend, implemented in Node.js with Socket.IO. It is intended for the frontend team to understand how events are processed, all available handlers, data shapes, and how game state is managed.
 
-## Connection
+---
 
-Connect to the Socket.IO server:
+## 1. Architecture and Main Components
 
-```javascript
-const socket = io('http://server-url:3000');
+* **GameService**: A singleton service that encapsulates all game logic, state, and rules enforcement. It tracks active games, manages token positions, and computes valid moves.
+* **GameController**: Acts as a Socket.IO adapter. It registers event handlers, delegates incoming messages to the service, and emits updates back to clients.
+
+Communication is via WebSockets. Clients emit events (e.g., `rollDice`) and receive callbacks or broadcasts (e.g., `diceRolled`, `gameStateUpdated`).
+
+---
+
+## 2. Directory Structure
+
+```
+project-root/
+├── gameLogic.js           # Board paths, coordinates, safe positions
+├── services/
+│   └── gameService.js     # Core logic: game creation, moves, turns
+└── controllers/
+    └── gameController.js  # Socket.IO handlers and payload composition
 ```
 
-## Events
+---
 
-### Client to Server Events
+## 3. Handler Reference
 
-These events are emitted by the client to trigger actions on the server.
+Below are all Socket.IO events handled by `GameController`. For each:
 
-#### `createGame`
+* **Event Name**: The client-side emit call.
+* **Parameters**: Data and optional callback signature.
+* **Behavior**: Service invocation and emitted responses.
 
-Create a new game instance.
+| Event           | Params                            | Description                                                                                              |
+| --------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `createGame`    | `(opts: { vsComputer }, cb)`      | Creates a new game. Returns `{ gameId, playerId: 0, colors }` via callback and broadcasts initial state. |
+| `joinGame`      | `(gameId: string, cb)`            | Joins existing game. Returns `{ gameId, playerId, colors }` or error. Broadcasts updated state.          |
+| `getBoardPaths` | `(cb)`                            | Generates board coordinate mappings and emits both callback result and `boardPaths` event.               |
+| `rollDice`      | `()`                              | Rolls dice for current player. Broadcasts `diceRolled` with `{ playerId, rolls }`.                       |
+| `playRoll`      | `(data: { tokenId, rollIdx })`    | Moves token according to selected roll. Broadcasts full updated game state.                              |
+| `skipTurn`      | `()`                              | Advances turn when no valid moves. Broadcasts updated state.                                             |
+| `rejoinGame`    | `(data: { gameId, playerIndex })` | Reattaches disconnected player. Emits `gameStarted` with full payload to resume.                         |
+| `disconnect`    | `()`                              | On client disconnect, service cleans up. Emits `playerDisconnected` to remaining players if needed.      |
 
-```javascript
-socket.emit('createGame', { vsComputer: Boolean }, callback);
+---
+
+## 4. Payload Structures
+
+### createGame / joinGame Callback
+
+```js
+{ gameId: string, playerId: number, colors: string[] }
 ```
 
-**Parameters:**
-- `vsComputer` (Boolean): Whether to play against AI (true) or human opponent (false)
+### boardPaths Event / Callback
 
-**Callback Response:**
-```javascript
+```js
 {
-  gameId: String,   // Unique ID for the game
-  playerId: Number, // Player index (0)
-  colors: Array     // Array of colors assigned to player (e.g., ['red', 'yellow'])
+  positions: number[],      // cell indices in loop order
+  entrances: Record<number, number>, // mapping home entrances per player
+  coordinates: Record<number, { x: number, y: number }>
 }
 ```
 
-#### `joinGame`
+### diceRolled Broadcast
 
-Join an existing game by ID.
-
-```javascript
-socket.emit('joinGame', gameId, callback);
+```js
+{ playerId: number, rolls: number[] }
 ```
 
-**Parameters:**
-- `gameId` (String): ID of the game to join
+### gameStateUpdated / gameStarted Payload
 
-**Callback Response:**
-```javascript
-// Success
+```js
 {
-  gameId: String,   // Joined game ID
-  playerId: Number, // Player index (1)
-  colors: Array     // Array of colors assigned to player (e.g., ['green', 'blue'])
-}
-
-// Error
-{
-  error: String // Error message if joining failed
+  tokens: { [tokenId: string]: number },  // token -> cell index
+  dice: number[],                        // last rolled values
+  myTurn: boolean,                       // enable/disable UI
+  gameOver: boolean,
+  winner: number | null                  // index of winning player
 }
 ```
 
-#### `rollDice`
+---
 
-Roll dice for the current player's turn.
+## 5. Board Logic Constants
 
-```javascript
-socket.emit('rollDice');
-```
+Defined in `gameLogic.js`:
 
-**Note:** No callback, response comes via `diceRolled` event.
+* **COMMON\_PATH**: Main loop of 52 cells.
+* **HOME\_PATHS**: Final stretch per player.
+* **FINAL\_PATHS**: Winning path cells.
+* **SAFE\_POSITIONS**: Cells where tokens are immune.
 
-#### `playRoll`
+Frontend should call `getBoardPaths` once at startup and cache the result for rendering.
 
-Move a token using a specific dice roll.
+---
 
-```javascript
-socket.emit('playRoll', {
-  tokenId: String, // ID of the token to move
-  rollIdx: Number  // Index of the dice roll to use (0 or 1)
-});
-```
+## 6. Turn & Move Workflow
 
-**Note:** No callback, response comes via `gameStateUpdated` event.
+1. **Rolling**: Client emits `rollDice` → controller calls `service.rollDice` → broadcast `diceRolled`.
+2. **Selecting Move**: Client emits `playRoll` with selected `tokenId` and `rollIdx` → service validates and updates state → broadcast `gameStateUpdated`.
+3. **Skipping**: If no moves, client emits `skipTurn` → service advances turn → broadcast `gameStateUpdated`.
 
-#### `skipTurn`
+AI moves are handled transparently in the service and pushed alongside human player updates.
 
-Skip the current player's turn when no valid moves are available.
+---
 
-```javascript
-socket.emit('skipTurn');
-```
+## 7. Disconnection & Rejoin
 
-**Note:** No callback, response comes via `gameStateUpdated` event.
+* **disconnect**: On socket drop, `service.handleDisconnect` frees resources and notifies others via `playerDisconnected`.
+* **rejoinGame**: Client emits with saved `gameId` and `playerIndex`. Controller rejoins room and emits `gameStarted` with full payload.
 
-#### `rejoinGame`
+---
 
-Reconnect to a game after disconnection.
+## 8. Frontend Integration Tips
 
-```javascript
-socket.emit('rejoinGame', {
-  gameId: String,       // ID of the game to rejoin
-  playerIndex: Number   // Player's index in the game (0 or 1)
-});
-```
+* **Listeners**:
 
-**Note:** No callback, response comes via `gameStarted` event.
+  ```js
+  socket.on("gameStateUpdated", updateBoard);
+  socket.on("diceRolled", displayDice);
+  socket.on("boardPaths", initBoard);
+  socket.on("playerDisconnected", showDisconnectModal);
+  socket.on("gameStarted", resumeGame);
+  ```
 
-### Server to Client Events
+* **Emitters**:
 
-These events are emitted by the server to notify clients about game state changes.
+  ```js
+  socket.emit("createGame", { vsComputer: false }, callback);
+  socket.emit("joinGame", gameId, callback);
+  socket.emit("getBoardPaths", callback);
+  socket.emit("rollDice");
+  socket.emit("playRoll", { tokenId, rollIdx });
+  socket.emit("skipTurn");
+  socket.emit("rejoinGame", { gameId, playerIndex });
+  ```
 
-#### `diceRolled`
+* **State Handling**: Use `myTurn` to enable/disable controls and `gameOver`/`winner` to show endgame UI.
 
-Triggered when a player rolls the dice.
+---
 
-```javascript
-socket.on('diceRolled', data => {
-  // data format:
-  {
-    playerId: Number,   // Index of player who rolled
-    rolls: Array        // Array of dice values (e.g., [3, 6])
-  }
-});
-```
+## 9. Testing & Debugging
 
-#### `gameStateUpdated`
+* Log every incoming/outgoing payload in development mode.
+* Use unique socket.io rooms to isolate games.
+* Simulate AI by toggling `vsComputer` in `createGame` and observe interleaved events.
 
-Triggered when the game state changes (after moves, turns, etc.).
-
-```javascript
-socket.on('gameStateUpdated', data => {
-  // data format:
-  {
-    tokens: Array,      // Array of all token objects with positions and state
-    dice: Array,        // Current available dice values
-    myTurn: Boolean,    // Whether it's this player's turn
-    gameOver: Boolean,  // Whether the game has ended
-    winner: Number      // Index of winning player (null if game in progress)
-  }
-});
-```
-
-#### `gameStarted`
-
-Triggered when a player successfully rejoins a game.
-
-```javascript
-socket.on('gameStarted', data => {
-  // Same format as gameStateUpdated
-});
-```
-
-#### `playerDisconnected`
-
-Triggered when an opponent disconnects from the game.
-
-```javascript
-socket.on('playerDisconnected', () => {
-  // No data, just notification of disconnect
-});
-```
-
-## Token Object Structure
-
-Each token in the `tokens` array has this structure:
-
-```javascript
-{
-  id: String,           // Token ID (e.g., "red-0")
-  color: String,        // Token color (red, green, yellow, blue)
-  x: Number,            // X-coordinate on board
-  y: Number,            // Y-coordinate on board
-  isClickable: Boolean  // Whether token can be moved with current dice rolls
-}
-```
-
-## Game Rules
-
-1. Players take turns rolling two dice
-2. Tokens start in home base (position -1)
-3. A token can only leave home base with a roll of 6
-4. Moving a token to the same position as an opponent's token sends the opponent's token back to home base
-5. Safe positions protect tokens from being sent home
-6. Players must use all valid moves before ending their turn
-7. The first player to get all tokens to the center wins
-
-## Error Handling
-
-The server provides error messages in callback responses when appropriate. Common errors include:
-- "Game not available": When joining a game that doesn't exist or is full
-- "Not your turn": When trying to roll or move out of turn
-- "Invalid move": When attempting an illegal token move
-- "Game not found": When referencing a non-existent game
-- "Invalid rejoin": When attempting to rejoin with incorrect credentials
-
-## Implementation Example
-
-Here's a basic client implementation example:
-
-```javascript
-const socket = io('http://server-url:3000');
-
-// Create a new game
-function createGame(vsComputer) {
-  socket.emit('createGame', { vsComputer }, response => {
-    console.log('Game created:', response.gameId);
-    // Store gameId for sharing with other players
-  });
-}
-
-// Join an existing game
-function joinGame(gameId) {
-  socket.emit('joinGame', gameId, response => {
-    if (response.error) {
-      console.error('Join failed:', response.error);
-    } else {
-      console.log('Joined game as player', response.playerId);
-    }
-  });
-}
-
-// Listen for game updates
-socket.on('gameStateUpdated', gameState => {
-  // Update UI with new game state
-  renderBoard(gameState.tokens);
-  updateDice(gameState.dice);
-  updateTurnIndicator(gameState.myTurn);
-  
-  if (gameState.gameOver) {
-    showGameOver(gameState.winner);
-  }
-});
-
-// Handle dice rolls
-function rollDice() {
-  socket.emit('rollDice');
-}
-
-socket.on('diceRolled', data => {
-  showDiceAnimation(data.rolls);
-});
-
-// Handle token movement
-function moveToken(tokenId, diceIndex) {
-  socket.emit('playRoll', {
-    tokenId: tokenId,
-    rollIdx: diceIndex
-  });
-}
-
-// Handle disconnection
-socket.on('playerDisconnected', () => {
-  showDisconnectMessage();
-});
-```
+For deeper questions on service internals, refer to `services/gameService.js` and `gameLogic.js` for rule enforcement and path calculations.
