@@ -9,7 +9,7 @@ const server = http.createServer(app);
 
 setupSocket(server);
 
-app.use(express.static('public'));  // Serve static files from the public directory
+
 
 app.use(express.json());
 

@@ -38,12 +38,14 @@ class GameController {
         this.broadcastState(game);
     }
 
-    // In GameController.js
-generateBoardPaths(cb) {  // Add callback parameter
-    const boardPaths = this.service.generateBoardPaths();
-    this.socket.emit("boardPaths", boardPaths);
-    if (cb) cb(boardPaths); // Invoke callback if provided
-}
+    generateBoardPaths(cb) {
+        const boardPaths = this.service.generateBoardPaths();
+        // Send response to the requesting client
+        if (cb) cb(boardPaths);
+        
+        // Also emit to all clients (optional)
+        this.socket.emit("boardPaths", boardPaths);
+      }
 
 
     joinGame(gameId, cb) {

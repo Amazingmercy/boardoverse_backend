@@ -9,12 +9,12 @@ const Logic = require('../gameLogic.js');
 
 // Import missing constants from gameLogic.js
 const {
-    FINAL_PATHS,
     COMMON_PATH,
     HOME_PATHS,
     HOME_ENTRANCES,
     COMMON_COORDINATES,
-    SAFE_POSITIONS
+    SAFE_POSITIONS,
+    HOME_BASES,
 } = require('../gameLogic.js');
 
 /**
@@ -320,9 +320,9 @@ class GameService {
     }
 
     /**
- * Generates all drawing paths for the Ludo board using game constants
- * @returns {Object} Contains all paths needed to render the board
- */
+    * Generates all drawing paths for the Ludo board using game constants
+    * @returns {Object} Contains all paths needed to render the board
+    */
     generateBoardPaths() {
         console.log("Generating board paths..."); 
         // Main board structure

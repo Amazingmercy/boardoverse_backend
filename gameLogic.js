@@ -33,26 +33,23 @@ const COMMON_PATH = [
 //     [3, 6], [4, 6], [5, 6], [6, 6]
 // ];
 const COMMON_COORDINATES = [
-    // Red quadrant (top-left, moves right then down)
+    // Red quadrant
     [1,6], [2,6], [3,6], [4,6], [5,6], [6,6],
-    [6,5], [6,4], [6,3], [6,2], [6,1],
-    [7,1], // Red entry to green quadrant
-    
-    // Green quadrant (top-right, moves down then left)
-    [8,1], [8,2], [8,3], [8,4], [8,5], [8,6],
-    [9,6], [10,6], [11,6], [12,6], [13,6],
-    [13,7], // Green entry to yellow quadrant
-    
-    // Yellow quadrant (bottom-right, moves left then up)
-    [13,8], [12,8], [11,8], [10,8], [9,8], [8,8],
-    [8,9], [8,10], [8,11], [8,12], [8,13],
-    [7,13], // Yellow entry to blue quadrant
-    
-    // Blue quadrant (bottom-left, moves up then right)
-    [6,13], [6,12], [6,11], [6,10], [6,9], [6,8],
-    [5,8], [4,8], [3,8], [2,8], [1,8],
-    [1,7]  // Blue entry back to red quadrant
+    [6,5], [6,4], [6,3], [6,2], [6,1], [7,1], [8,1], // 13
+
+    // Green quadrant
+    [8,2], [8,3], [8,4], [8,5], [8,6], [9,6],
+    [10,6], [11,6], [12,6], [13,6], [13,7], [13,8], [12,8], // 13
+
+    // Yellow quadrant
+    [11,8], [10,8], [9,8], [8,8], [8,9], [8,10],
+    [8,11], [8,12], [8,13], [7,13], [6,13], [6,12], [6,11], // 13
+
+    // Blue quadrant
+    [6,10], [6,9], [6,8], [5,8], [4,8], [3,8],
+    [2,8], [1,8], [1,7], [1,6], [2,6], [3,6], [4,6] // Loops back
 ];
+
 
 /**
  * Entry positions for each color's home stretch
@@ -75,30 +72,31 @@ const HOME_ENTRANCES = {
  * Complete path for each color, including common path and home stretch
  * @type {Object}
  */
-// const FINAL_PATHS = {
-//     red: [...COMMON_PATH.slice(HOME_ENTRANCES.red), ...COMMON_PATH.slice(0, HOME_ENTRANCES.red), 50, 51, 52, 53, 54, 55, 56, 57],
-//     green: [...COMMON_PATH.slice(HOME_ENTRANCES.green), ...COMMON_PATH.slice(0, HOME_ENTRANCES.green), 50, 51, 52, 53, 54, 55, 56, 57],
-//     yellow: [...COMMON_PATH.slice(HOME_ENTRANCES.yellow), ...COMMON_PATH.slice(0, HOME_ENTRANCES.yellow), 50, 51, 52, 53, 54, 55, 56, 57],
-//     blue: [...COMMON_PATH.slice(HOME_ENTRANCES.blue), ...COMMON_PATH.slice(0, HOME_ENTRANCES.blue), 50, 51, 52, 53, 54, 55, 56, 57]
-// };
 const FINAL_PATHS = {
-    red: {
-        common: [...Array(52).keys()], // 0-51
-        home: [52,53,54,55,56,57,58]  // Red home stretch
-    },
-    green: {
-        common: [...Array(52).keys()],
-        home: [59,60,61,62,63,64,65]  // Green home stretch
-    },
-    yellow: {
-        common: [...Array(52).keys()],
-        home: [66,67,68,69,70,71,72] // Yellow home stretch
-    },
-    blue: {
-        common: [...Array(52).keys()],
-        home: [73,74,75,76,77,78,79] // Blue home stretch
-    }
+    red: [...COMMON_PATH.slice(0), 100, 101, 102, 103, 104, 105], // Full loop + home
+    green: [...COMMON_PATH.slice(13).concat(COMMON_PATH.slice(0, 13)), 110, 111, 112, 113, 114, 115],
+    yellow: [...COMMON_PATH.slice(26).concat(COMMON_PATH.slice(0, 26)), 120, 121, 122, 123, 124, 125],
+    blue: [...COMMON_PATH.slice(39).concat(COMMON_PATH.slice(0, 39)), 130, 131, 132, 133, 134, 135]
 };
+
+// const FINAL_PATHS = {
+//     red: {
+//         common: [...Array(52).keys()], // 0-51
+//         home: [52,53,54,55,56,57,58]  // Red home stretch
+//     },
+//     green: {
+//         common: [...Array(52).keys()],
+//         home: [59,60,61,62,63,64,65]  // Green home stretch
+//     },
+//     yellow: {
+//         common: [...Array(52).keys()],
+//         home: [66,67,68,69,70,71,72] // Yellow home stretch
+//     },
+//     blue: {
+//         common: [...Array(52).keys()],
+//         home: [73,74,75,76,77,78,79] // Blue home stretch
+//     }
+// };
 
 /**
  * Board coordinates for home stretch paths
@@ -110,18 +108,38 @@ const FINAL_PATHS = {
 //     yellow: [[13, 7], [12, 7], [11, 7], [10, 7], [9, 7], [8, 7], [7, 7]],
 //     blue: [[7, 13], [7, 12], [7, 11], [7, 10], [7, 9], [7, 8], [7, 7]]
 // };
+// const HOME_PATHS = {
+//     red:   [[6,7], [5,7], [4,7], [3,7], [2,7], [1,7], [0,7]],
+//     green: [[7,6], [7,5], [7,4], [7,3], [7,2], [7,1], [7,0]],
+//     yellow: [[8,7], [9,7], [10,7], [11,7], [12,7], [13,7], [14,7]],
+//     blue:  [[7,8], [7,9], [7,10], [7,11], [7,12], [7,13], [7,14]]
+// };
 const HOME_PATHS = {
-    red:   [[6,7], [5,7], [4,7], [3,7], [2,7], [1,7], [0,7]],
-    green: [[7,6], [7,5], [7,4], [7,3], [7,2], [7,1], [7,0]],
-    yellow: [[8,7], [9,7], [10,7], [11,7], [12,7], [13,7], [14,7]],
-    blue:  [[7,8], [7,9], [7,10], [7,11], [7,12], [7,13], [7,14]]
+    red: [[2,5], [3,5], [4,5], [5,5], [6,5], [7,5]],
+    green: [[9,2], [9,3], [9,4], [9,5], [9,6], [9,7]],
+    yellow: [[11,9], [10,9], [9,9], [8,9], [7,9], [6,9]],
+    blue: [[5,11], [4,11], [3,11], [2,11], [1,11], [0,11]]
 };
+
 /**
  * Safe positions where tokens cannot be captured
  * @type {Array<number>}
  */
 //const SAFE_POSITIONS = [0, 8, 13, 21, 26, 34, 39, 47];
 const SAFE_POSITIONS = [0, 12, 25, 38, 6, 19, 32, 45];
+
+/**
+ * Starting positions for each color's tokens in their home base
+ * @type {Object}
+ */
+const HOME_BASES = {
+    red:   [[1,1],[1,3],[3,1],[3,3]],
+    green: [[1,11],[1,13],[3,11],[3,13]],
+    yellow:[[11,11],[11,13],[13,11],[13,13]],
+    blue:  [[11,1],[11,3],[13,1],[13,3]],
+  };
+  
+
 
 /**
  * Initialize tokens for all players
@@ -131,14 +149,6 @@ function initializeTokens() {
     const tokens = [];
     const COLORS = ['red', 'green', 'yellow', 'blue'];
     
-    // Starting positions for each color's tokens in their home base
-    const HOME_BASES = {
-        red: [[2, 2], [2, 4], [4, 2], [4, 4]],
-        green: [[10, 2], [10, 4], [12, 2], [12, 4]],
-        yellow: [[10, 10], [10, 12], [12, 10], [12, 12]],
-        blue: [[2, 10], [2, 12], [4, 10], [4, 12]]
-    };
-
     // Create 4 tokens for each player color
     COLORS.forEach((color, playerIndex) => {
         for (let i = 0; i < 4; i++) {
@@ -437,5 +447,6 @@ module.exports = {
     HOME_PATHS,
     HOME_ENTRANCES,
     COMMON_COORDINATES,
-    SAFE_POSITIONS
+    SAFE_POSITIONS,
+    HOME_BASES
 };
