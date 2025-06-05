@@ -19,7 +19,8 @@ This documentation describes the WebSocket API for a Ludo-style board game imple
 
 ### Establishing Connection
 
-1. Connect to the WebSocket server at `ws://your-server-address:3000`
+1. Connect to the WebSocket server at 
+### `https://boardoverse-backend.onrender.com`
 2. Once connected, the client must register event handlers for server messages
 3. The connection remains open throughout the game session
 
