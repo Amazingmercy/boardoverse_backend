@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ludo Game</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1 class="title">Ludo Game</h1>
+    
+    <!-- Game Lobby -->
+    <div id="game-lobby">
+      <div class="card">
+        <h2>Welcome to Ludo</h2>
+        <div class="button-group">
+          <button id="create-game-btn" class="btn primary-btn">Create New Game</button>
+          <button id="create-ai-game-btn" class="btn secondary-btn">Play vs Computer</button>
+        </div>
+        <div class="join-section">
+          <h3>Join Existing Game</h3>
+          <div class="input-group">
+            <input type="text" id="game-id-input" placeholder="Enter Game ID">
+            <button id="join-game-btn" class="btn">Join</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Board Section -->
+    <div id="game-container" style="display: none;">
+      <div class="game-info">
+        <div class="card info-card">
+          <h2>Game Information</h2>
+          <p>Game ID: <span id="game-id" class="game-id-display"></span></p>
+          <p>You are Player <span id="player-number"></span> 
+            <span id="player-colors"></span>
+          </p>
+          <p id="turn-status"></p>
+          
+          <div id="game-over-banner" class="game-over" style="display: none;">
+            <h3>Game Over!</h3>
+            <p id="winner-message"></p>
+          </div>
+          
+          <button id="copy-link-btn" class="btn">Copy Invite Link</button>
+        </div>
+      </div>
+
+  
+      <div id="toast-container"></div>
+      
+      <div class="game-board-container">
+        <canvas id="game-board"></canvas>
+      </div>
+      
+      <div class="game-controls">
+        <div class="card">
+          <h3>Controls</h3>
+          <div id="dice-container">
+            <div class="dice-display">
+              <div id="dice1" class="dice"></div>
+              <div id="dice2" class="dice"></div>
+            </div>
+          </div>
+          <button id="roll-dice-btn" class="btn primary-btn" disabled>Roll Dice</button>
+          <button id="skip-turn-btn" class="btn" disabled>Skip Turn</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

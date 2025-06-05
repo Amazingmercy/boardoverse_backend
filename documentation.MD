@@ -1,152 +1,292 @@
-## Overview
+# Board Game WebSocket API Documentation
 
-This document describes the architecture and workflow of the multiplayer Ludo game backend, implemented in Node.js with Socket.IO. It is intended for the frontend team to understand how events are processed, all available handlers, data shapes, and how game state is managed.
+## Table of Contents
+1. [Introduction](#introduction)
+2. [WebSocket Connection](#websocket-connection)
+3. [API Events](#api-events)
+   - [Client-to-Server Events](#client-to-server-events)
+   - [Server-to-Client Events](#server-to-client-events)
+4. [Game Flow](#game-flow)
+5. [Data Structures](#data-structures)
+6. [Error Handling](#error-handling)
+7. [Example Implementation](#example-implementation)
 
----
+## Introduction
 
-## 1. Architecture and Main Components
+This documentation describes the WebSocket API for a Ludo-style board game implementation. The API allows frontend clients to create, join, and play games in real-time using WebSocket connections.
 
-* **GameService**: A singleton service that encapsulates all game logic, state, and rules enforcement. It tracks active games, manages token positions, and computes valid moves.
-* **GameController**: Acts as a Socket.IO adapter. It registers event handlers, delegates incoming messages to the service, and emits updates back to clients.
+## WebSocket Connection
 
-Communication is via WebSockets. Clients emit events (e.g., `rollDice`) and receive callbacks or broadcasts (e.g., `diceRolled`, `gameStateUpdated`).
+### Establishing Connection
 
----
+1. Connect to the WebSocket server at `ws://your-server-address:3000`
+2. Once connected, the client must register event handlers for server messages
+3. The connection remains open throughout the game session
 
-## 2. Directory Structure
+### Connection Requirements
 
-```
-project-root/
-├── gameLogic.js           # Board paths, coordinates, safe positions
-├── services/
-│   └── gameService.js     # Core logic: game creation, moves, turns
-└── controllers/
-    └── gameController.js  # Socket.IO handlers and payload composition
-```
+- The client must implement handlers for all server events
+- The client must maintain the connection state
+- All game actions are performed through WebSocket messages
 
----
+## API Events
 
-## 3. Handler Reference
+### Client-to-Server Events
 
-Below are all Socket.IO events handled by `GameController`. For each:
+#### `createGame`
+- **Purpose**: Create a new game
+- **Payload**: 
+  ```typescript
+  {
+    vsComputer: boolean // true for single-player vs AI
+  }
+  ```
+- **Response**: Callback with:
+  ```typescript
+  {
+    gameId: string,     // 6-character game ID
+    playerId: number,   // 0 (first player)
+    colors: string[]    // ['red', 'yellow']
+  }
+  ```
 
-* **Event Name**: The client-side emit call.
-* **Parameters**: Data and optional callback signature.
-* **Behavior**: Service invocation and emitted responses.
+#### `joinGame`
+- **Purpose**: Join an existing game
+- **Payload**: Game ID string
+- **Response**: Callback with:
+  ```typescript
+  {
+    gameId: string,     // Same as input
+    playerId: number,   // 1 (second player)
+    colors: string[]    // ['green', 'blue']
+  }
+  ```
 
-| Event           | Params                            | Description                                                                                              |
-| --------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `createGame`    | `(opts: { vsComputer }, cb)`      | Creates a new game. Returns `{ gameId, playerId: 0, colors }` via callback and broadcasts initial state. |
-| `joinGame`      | `(gameId: string, cb)`            | Joins existing game. Returns `{ gameId, playerId, colors }` or error. Broadcasts updated state.          |
-| `getBoardPaths` | `(cb)`                            | Generates board coordinate mappings and emits both callback result and `boardPaths` event.               |
-| `rollDice`      | `()`                              | Rolls dice for current player. Broadcasts `diceRolled` with `{ playerId, rolls }`.                       |
-| `playRoll`      | `(data: { tokenId, rollIdx })`    | Moves token according to selected roll. Broadcasts full updated game state.                              |
-| `skipTurn`      | `()`                              | Advances turn when no valid moves. Broadcasts updated state.                                             |
-| `rejoinGame`    | `(data: { gameId, playerIndex })` | Reattaches disconnected player. Emits `gameStarted` with full payload to resume.                         |
-| `disconnect`    | `()`                              | On client disconnect, service cleans up. Emits `playerDisconnected` to remaining players if needed.      |
+#### `getBoardPaths`
+- **Purpose**: Request board layout data
+- **Payload**: None
+- **Response**: Callback with complex board path data (see [Data Structures](#data-structures))
 
----
+#### `rollDice`
+- **Purpose**: Roll dice for current turn
+- **Payload**: None
+- **Server Response**: Broadcasts `diceRolled` event
 
-## 4. Payload Structures
+#### `playRoll`
+- **Purpose**: Move a token using a specific dice roll
+- **Payload**: 
+  ```typescript
+  {
+    tokenId: string,    // Format "COLOR-INDEX" (e.g., "RED-0")
+    rolledValue: number // Dice value to use (1-6)
+  }
+  ```
+- **Server Response**: Broadcasts updated game state
 
-### createGame / joinGame Callback
+#### `skipTurn`
+- **Purpose**: Skip current turn when no valid moves
+- **Payload**: None
+- **Server Response**: Broadcasts updated game state
 
-```js
-{ gameId: string, playerId: number, colors: string[] }
-```
+### Server-to-Client Events
 
-### boardPaths Event / Callback
+#### `diceRolled`
+- **Purpose**: Notify players of dice roll results
+- **Payload**: 
+  ```typescript
+  {
+    playerId: number,   // Player who rolled
+    dice: number[]      // Array of dice values (typically 2 values)
+  }
+  ```
 
-```js
+#### `gameStateUpdated`
+- **Purpose**: Broadcast updated game state after any change
+- **Payload**: 
+  ```typescript
+  {
+    tokens: TokenState[],
+    dice: number[],
+    myTurn: boolean,    // True if it's now this player's turn
+    gameOver: boolean,
+    winner: number|null // Index of winning player if gameOver=true
+  }
+  ```
+
+#### `playerDisconnected`
+- **Purpose**: Notify when a player disconnects
+- **Payload**: None
+
+#### `error`
+- **Purpose**: Notify of errors
+- **Payload**: 
+  ```typescript
+  {
+    message: string // Error description
+  }
+  ```
+
+## Game Flow
+
+1. **Game Setup**
+   - Player 1 creates game with `createGame`
+   - Player 2 joins with `joinGame` (or AI joins automatically)
+   - Client requests board data with `getBoardPaths`
+
+2. **Gameplay Loop**
+   - Current player rolls dice with `rollDice`
+   - Server responds with `diceRolled` and updates state
+   - Player selects token and calls `playRoll` with chosen dice value
+   - If no valid moves, player calls `skipTurn`
+   - Server broadcasts state changes to all players
+   - Turn passes to next player
+
+3. **Game End**
+   - When a player gets all tokens to center, they win
+   - Server sets `gameOver` and `winner` in state
+   - Game can be restarted by creating a new game
+
+## Data Structures
+
+### Board Paths Structure
+Returned by `getBoardPaths`:
+```typescript
 {
-  positions: number[],      // cell indices in loop order
-  entrances: Record<number, number>, // mapping home entrances per player
-  coordinates: Record<number, { x: number, y: number }>
+  commonPath: {
+    type: 'path',
+    coords: [number, number][], // Array of [x,y] coordinates
+    length: number,
+    next: number[],             // Indices of next positions
+    prev: number[]              // Indices of previous positions
+  },
+  homePaths: {
+    [color: string]: {
+      type: 'homepath',
+      coords: [number, number][],
+      length: number,
+      entryPoint: number        // Index on common path
+    }
+  },
+  safeZones: {
+    type: 'safezone',
+    coords: [number, number][],
+    color: string
+  }[],
+  homeBases: {
+    [color: string]: {
+      type: 'homebase',
+      coords: [number, number][]
+    }
+  },
+  startAreas: {
+    [color: string]: {
+      type: 'startarea',
+      coords: [number, number][]
+    }
+  },
+  center: {
+    type: 'center',
+    coords: [number, number][]
+  }
 }
 ```
 
-### diceRolled Broadcast
-
-```js
-{ playerId: number, rolls: number[] }
-```
-
-### gameStateUpdated / gameStarted Payload
-
-```js
+### Token State
+```typescript
 {
-  tokens: { [tokenId: string]: number },  // token -> cell index
-  dice: number[],                        // last rolled values
-  myTurn: boolean,                       // enable/disable UI
-  gameOver: boolean,
-  winner: number | null                  // index of winning player
+  id: string,         // Format "COLOR-INDEX" (e.g., "RED-0")
+  color: string,      // 'RED', 'GREEN', 'YELLOW', 'BLUE'
+  x: number,          // Current x-coordinate
+  y: number,          // Current y-coordinate
+  position: number,   // Internal position index
+  index: number,      // Token index (0-3)
+  isClickable: boolean // True if token can be moved
 }
 ```
 
----
+## Error Handling
 
-## 5. Board Logic Constants
+The server may send error messages through the `error` event. Common errors include:
 
-Defined in `gameLogic.js`:
+- `Game does not exist` - Invalid game ID
+- `Game is already full` - Attempt to join full game
+- `Not your turn` - Attempt to act out of turn
+- `Token not found` - Invalid token ID
+- `Invalid move` - Attempted move violates game rules
 
-* **COMMON\_PATH**: Main loop of 52 cells.
-* **HOME\_PATHS**: Final stretch per player.
-* **FINAL\_PATHS**: Winning path cells.
-* **SAFE\_POSITIONS**: Cells where tokens are immune.
+## Example Implementation
 
-Frontend should call `getBoardPaths` once at startup and cache the result for rendering.
+```javascript
+// Basic frontend implementation example
+const socket = io('ws://localhost:3000');
 
----
+// Set up event handlers
+socket.on('gameStateUpdated', (state) => {
+  console.log('Game state updated:', state);
+  // Update UI with new state
+});
 
-## 6. Turn & Move Workflow
+socket.on('diceRolled', (data) => {
+  console.log('Dice rolled:', data.dice);
+  // Show dice animation
+});
 
-1. **Rolling**: Client emits `rollDice` → controller calls `service.rollDice` → broadcast `diceRolled`.
-2. **Selecting Move**: Client emits `playRoll` with selected `tokenId` and `rollIdx` → service validates and updates state → broadcast `gameStateUpdated`.
-3. **Skipping**: If no moves, client emits `skipTurn` → service advances turn → broadcast `gameStateUpdated`.
+socket.on('playerDisconnected', () => {
+  console.log('Opponent disconnected');
+  // Show disconnect message
+});
 
-AI moves are handled transparently in the service and pushed alongside human player updates.
+socket.on('error', (error) => {
+  console.error('Game error:', error.message);
+  // Show error to user
+});
 
----
+// Create a new game
+function createGame(vsComputer) {
+  socket.emit('createGame', { vsComputer }, (response) => {
+    if (response.error) {
+      console.error(response.error);
+      return;
+    }
+    console.log('Game created:', response.gameId);
+    // Store game ID and player ID
+  });
+}
 
-## 7. Disconnection & Rejoin
+// Join existing game
+function joinGame(gameId) {
+  socket.emit('joinGame', gameId, (response) => {
+    if (response.error) {
+      console.error(response.error);
+      return;
+    }
+    console.log('Joined game:', response.gameId);
+    // Store game ID and player ID
+  });
+}
 
-* **disconnect**: On socket drop, `service.handleDisconnect` frees resources and notifies others via `playerDisconnected`.
-* **rejoinGame**: Client emits with saved `gameId` and `playerIndex`. Controller rejoins room and emits `gameStarted` with full payload.
+// Request board data
+function getBoardData() {
+  socket.emit('getBoardPaths', (paths) => {
+    console.log('Board paths:', paths);
+    // Render board based on paths
+  });
+}
 
----
+// Roll dice
+function rollDice() {
+  socket.emit('rollDice');
+}
 
-## 8. Frontend Integration Tips
+// Move token
+function moveToken(tokenId, diceValue) {
+  socket.emit('playRoll', { tokenId, rolledValue: diceValue });
+}
 
-* **Listeners**:
+// Skip turn
+function skipTurn() {
+  socket.emit('skipTurn');
+}
+```
 
-  ```js
-  socket.on("gameStateUpdated", updateBoard);
-  socket.on("diceRolled", displayDice);
-  socket.on("boardPaths", initBoard);
-  socket.on("playerDisconnected", showDisconnectModal);
-  socket.on("gameStarted", resumeGame);
-  ```
-
-* **Emitters**:
-
-  ```js
-  socket.emit("createGame", { vsComputer: false }, callback);
-  socket.emit("joinGame", gameId, callback);
-  socket.emit("getBoardPaths", callback);
-  socket.emit("rollDice");
-  socket.emit("playRoll", { tokenId, rollIdx });
-  socket.emit("skipTurn");
-  socket.emit("rejoinGame", { gameId, playerIndex });
-  ```
-
-* **State Handling**: Use `myTurn` to enable/disable controls and `gameOver`/`winner` to show endgame UI.
-
----
-
-## 9. Testing & Debugging
-
-* Log every incoming/outgoing payload in development mode.
-* Use unique socket.io rooms to isolate games.
-* Simulate AI by toggling `vsComputer` in `createGame` and observe interleaved events.
-
-For deeper questions on service internals, refer to `services/gameService.js` and `gameLogic.js` for rule enforcement and path calculations.
+This documentation provides a comprehensive guide for frontend developers to integrate with the board game WebSocket API. The API supports both single-player (vs AI) and multiplayer gameplay with real-time updates.

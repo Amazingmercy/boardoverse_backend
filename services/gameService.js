@@ -6,16 +6,8 @@
 
 const { v4: uuidv4 } = require("uuid");
 const Logic = require('../gameLogic.js');
-
-// Import missing constants from gameLogic.js
-const {
-    COMMON_PATH,
-    HOME_PATHS,
-    HOME_ENTRANCES,
-    COMMON_COORDINATES,
-    SAFE_POSITIONS,
-    HOME_BASES,
-} = require('../gameLogic.js');
+const path = require('path')
+const fs = require("fs");
 
 /**
  * GameService class provides game management functionality
@@ -38,7 +30,11 @@ class GameService {
      */
     static getInstance() {
         return this.instance || (this.instance = new GameService());
+        
     }
+
+
+
 
     /**
      * Create a new game instance
@@ -69,6 +65,8 @@ class GameService {
             winners: [],              // Store winning players in order
             gameOver: false,
             vsComputer: !!vsComputer,
+            createdAt: Date.now(),
+            lastActivity: Date.now()
         };
 
         // Store game in collection
@@ -91,7 +89,8 @@ class GameService {
         const game = this.games[gameId];
 
         // Validate game exists and has room
-        if (!game || game.players.length >= 2) throw new Error('Game not available');
+        if (!game) throw new Error('Game does not exist');
+        if (game.players.length >= 2) throw new Error('Game is already full');
 
         // Add player to the game
         game.players.push({ id: socketId, playerIndex: 1, colors: ['green', 'blue'] });
@@ -101,58 +100,64 @@ class GameService {
 
         // Mark game as started
         game.gameStarted = true;
+        game.lastActivity = Date.now(); // Update activity timestamp
 
         return game;
     }
 
-    /**
-     * Roll the dice for a player's turn
-     * @param {string} socketId - The socket ID of the player rolling
-     * @returns {Object} The updated game object
-     * @throws {Error} If it's not the player's turn
-     */
-    rollDice(socketId) {
-        const game = this._getGameBySocket(socketId);
-        const pIdx = game.players.findIndex(p => p.id === socketId);
 
-        // Validate it's the player's turn
-        if (pIdx !== game.currentPlayer) throw new Error('Not your turn');
+/**
+ * Roll the dice for a player's turn
+ * @param {string} socketId - The socket ID of the player rolling
+ * @returns {Object} The updated game object
+ * @throws {Error} If it's not the player's turn
+ */
+rollDice(socketId) {
+    const game = this._getGameBySocket(socketId);
+    const pIdx = game.players.findIndex(p => p.id === socketId);
 
-        // Generate two random dice rolls (1-6)
-        const rolls = [1, 2].map(() => Math.floor(Math.random() * 6) + 1);
-        game.originalRolls = [...rolls];
-        game.currentRolls = [...rolls];
-        game.rolledValue = game.originalRolls
+    // Validate it's the player's turn
+    if (pIdx !== game.currentPlayer) {
+        // If it's not their turn, ensure their dice display is empty as they can't roll.
+        // This handles cases where a player might try to roll out of turn.
+        game.rolledValue = [];
+        throw new Error('Not your turn');
+    }
 
+    // Generate two random dice rolls (1-6)
+    const rolls = [1, 2].map(() => Math.floor(Math.random() * 6) + 1);
 
-        // Check if at least one valid move exists with the rolled values
-        const hasValidMove = game.currentRolls.some(val => {
-            game.diceValue = val;
-            return Logic.checkForValidMoves(game, pIdx);
-        });
+    game.originalRolls = [...rolls];
+    game.currentRolls = [...rolls]; // These are the rolls currently available for token movement
+    game.rolledValue = [...rolls];  // This specifically holds the values to be displayed
 
-        // If no valid moves, end turn
-        if (!hasValidMove) {
-
-            if (!game.vsCompute) {
-                Logic.nextTurn(game);
-                game.rolledValue = game.originalRolls
-                return game;
-            }
-
-            // If AI's turn, trigger AI move after a delay
-            if (game.vsComputer && game.currentPlayer === 1) {
-                setTimeout(() => {
-                    Logic.makeComputerMove(game);
-                }, 1500);
-            } else {
-                // Move to next player
-                Logic.nextTurn(game);
-            }
+    // Temporarily set game.diceValue for internal validation checks, then reset it.
+    let hasValidMove = false;
+    // Loop through the rolled dice to check if any move is valid
+    for (const val of game.currentRolls) {
+        game.diceValue = val; // Set the current dice value for the isValidMove check
+        if (Logic.checkForValidMoves(game, pIdx)) {
+            hasValidMove = true;
+            break; // Found at least one valid move, no need to check further
         }
-
-        return game;
     }
+
+    // Reset the dice value after checking
+    game.diceValue = 0;
+
+    // If no valid moves are possible with the rolled dice, end the turn immediately.
+    if (!hasValidMove) {
+        Logic.nextTurn(game); 
+
+        // If it's an AI game and it's now the AI's turn, trigger the AI move after a delay.
+        if (game.vsComputer && game.players[game.currentPlayer].id === 'AI') {
+            setTimeout(() => {
+                Logic.makeComputerMove(game);
+            }, 1500); // Small delay for better user experience
+        }
+    }
+    return game;
+}
 
     /**
      * Play a token move using a specific dice roll
@@ -162,32 +167,45 @@ class GameService {
      * @returns {Object} The updated game object
      * @throws {Error} If the move is invalid
      */
-    playRoll(socketId, tokenId, rollIdx) {
+    playRoll(socketId, tokenId, rolledValue) {
         const game = this._getGameBySocket(socketId);
 
-        // Find the token to move
-        const token = game.tokens.find(t => t.id === tokenId);
+  // Find the token
+  const token = game.tokens.find(t => t.id === tokenId);
+  if (!token) throw new Error('Token not found');
 
-        // Get the dice value to use
-        const val = game.currentRolls[rollIdx];
-        game.diceValue = val;
+  // Find a matching die face in currentRolls
+  const idx = game.currentRolls.findIndex(v => v === rolledValue);
+  if (idx < 0) throw new Error('Invalid roll value');
 
-        // Validate the move
-        if (!Logic.isValidMove(game, token)) throw new Error('Invalid move');
+  // Use that face to move
+  game.diceValue = rolledValue;
 
-        // Execute the move
-        Logic.moveToken(game, token);
+  // Validate the move
+  if (!Logic.isValidMove(game, token)) throw new Error('Invalid move');
 
-        // Remove the used roll
-        game.currentRolls.splice(rollIdx, 1);
+  // Execute the move
+  Logic.moveToken(game, token);
 
-        // Check if no more valid moves, then end turn
-        if (!Logic.checkForValidMoves(game, game.currentPlayer)) Logic.nextTurn(game);
+  // Remove exactly that one die from currentRolls
+  game.currentRolls.splice(idx, 1);
 
-        // If AI's turn, trigger AI move
-        if (game.vsComputer && game.currentPlayer === 1) Logic.makeComputerMove(game);
+  // If no more rolls or no valid moves remain, advance turn
+  if (
+    game.currentRolls.length === 0 ||
+    !Logic.checkForValidMoves(game, game.currentPlayer)
+  ) {
+    Logic.nextTurn(game);
+  }
 
-        return game;
+  // If it’s AI’s turn, schedule the AI move
+  if (game.vsComputer && game.currentPlayer === 1) {
+    setTimeout(() => {
+      Logic.makeComputerMove(game);
+    }, 1000);
+  }
+
+  return game;
     }
 
     /**
@@ -197,39 +215,25 @@ class GameService {
      */
     skipTurn(socketId) {
         const game = this._getGameBySocket(socketId);
+        const pIdx = game.players.findIndex(p => p.id === socketId);
+
+        // Validate it's the player's turn
+        if (pIdx !== game.currentPlayer) throw new Error('Not your turn');
 
         // End the current turn
         Logic.nextTurn(game);
 
         // If AI's turn, trigger AI move
-        if (game.vsComputer && game.currentPlayer === 1) Logic.makeComputerMove(game);
+        if (game.vsComputer && game.currentPlayer === 1) {
+            setTimeout(() => {
+                Logic.makeComputerMove(game);
+            }, 1000);
+        }
 
         return game;
     }
 
-    /**
-     * Handle a player rejoining an existing game
-     * @param {string} socketId - The new socket ID of the rejoining player
-     * @param {string} gameId - The ID of the game to rejoin
-     * @param {number} playerIndex - The player's index in the game
-     * @returns {Object} The updated game object
-     * @throws {Error} If the rejoin parameters are invalid
-     */
-    rejoinGame(socketId, gameId, playerIndex) {
-        const game = this.games[gameId];
-
-        // Validate game exists and player position is valid
-        if (!game || !game.players[playerIndex]) throw new Error('Invalid rejoin');
-
-        // Update player's socket ID
-        game.players[playerIndex].id = socketId;
-
-        // Associate socket with game
-        this.playerSockets[socketId] = gameId;
-
-        return game;
-    }
-
+    
     /**
      * Handle a player disconnecting
      * @param {string} socketId - The socket ID of the disconnected player
@@ -243,11 +247,24 @@ class GameService {
         delete this.playerSockets[socketId];
 
         if (game) {
-            // Remove player from game
-            game.players = game.players.filter(p => p.id !== socketId);
-
-            // Clean up empty games
-            if (!game.players.length) delete this.games[gameId];
+            // Don't immediately remove the player to allow for reconnection
+            // Just mark them as disconnected by setting a disconnected flag
+            const player = game.players.find(p => p.id === socketId);
+            if (player) {
+                player.disconnected = true;
+                
+                // Keep the game alive for a reconnect window (e.g., 10 minutes)
+                player.disconnectTimer = setTimeout(() => {
+                    // After timeout, remove the player
+                    game.players = game.players.filter(p => p.id !== socketId);
+                    
+                    // Clean up empty games
+                    if (game.players.length === 0 || 
+                        (game.players.length === 1 && game.players[0].id === 'AI')) {
+                        delete this.games[gameId];
+                    }
+                }, 10 * 60 * 1000); // 10 minutes
+            }
         }
 
         return gameId;
@@ -260,6 +277,10 @@ class GameService {
      */
     buildGameState(gameId) {
         const g = this.games[gameId];
+        if (!g) throw new Error('Game not found');
+
+        const currentPlayer = g.players[g.currentPlayer]; // current player object
+        const allowedColors = currentPlayer.colors; // e.g. ['red', 'yellow']
 
         // Map tokens to client-friendly format with coordinates
         const tokens = g.tokens.map(t => {
@@ -269,17 +290,21 @@ class GameService {
                 color: t.color,
                 x: coord[0],
                 y: coord[1],
+                position: t.position,
+                index: t.index,
                 isClickable: !g.gameOver &&
-                    g.currentPlayer === t.playerIndex &&
-                    Logic.isValidMove(g, t)
+                    allowedColors.includes(t.color.toLowerCase()) &&
+                    g.currentRolls.some(val => {
+                        g.diceValue = val;
+                        return Logic.isValidMove(g, t);
+                    })
             };
         });
-
 
         return {
             id: g.id,
             tokens,
-            dice: [...g.rolledValue]
+            dice: g.rolledValue || []
         };
     }
 
@@ -306,169 +331,16 @@ class GameService {
      * @private
      */
     _getCoords(token) {
-        // If token has reached the center
-        if (token.completed) return [7, 7];
-
-        // If token is still in home base
-        if (token.position === -1) return token.homeBasePosition;
-
-        // If token is on the common path
-        if (token.position < COMMON_PATH.length) return COMMON_COORDINATES[token.position];
-
-        // If token is on the home path
-        return HOME_PATHS[token.color][token.position - COMMON_PATH.length];
+        const coords = Logic.getCoords(token)
+        return coords
     }
 
-    /**
-    * Generates all drawing paths for the Ludo board using game constants
-    * @returns {Object} Contains all paths needed to render the board
-    */
     generateBoardPaths() {
-        console.log("Generating board paths..."); 
-        // Main board structure
-        const paths = {
-            // Outer and inner borders (calculated based on grid size)
-            borders: [
-                {
-                    type: 'square',
-                    coords: [
-                        [0, 0],
-                        [COMMON_COORDINATES.length / 4 - 1, 0],
-                        [COMMON_COORDINATES.length / 4 - 1, COMMON_COORDINATES.length / 4 - 1],
-                        [0, COMMON_COORDINATES.length / 4 - 1]
-                    ]
-                },
-                {
-                    type: 'square',
-                    coords: [
-                        [1, 1],
-                        [COMMON_COORDINATES.length / 4 - 2, 1],
-                        [COMMON_COORDINATES.length / 4 - 2, COMMON_COORDINATES.length / 4 - 2],
-                        [1, COMMON_COORDINATES.length / 4 - 2]
-                    ]
-                }
-            ],
-
-            // Center cross
-            cross: [
-                {
-                    type: 'line',
-                    coords: [
-                        [Math.floor(COMMON_COORDINATES.length / 8), 1],
-                        [Math.floor(COMMON_COORDINATES.length / 8), COMMON_COORDINATES.length / 4 - 2]
-                    ]
-                },
-                {
-                    type: 'line',
-                    coords: [
-                        [1, Math.floor(COMMON_COORDINATES.length / 8)],
-                        [COMMON_COORDINATES.length / 4 - 2, Math.floor(COMMON_COORDINATES.length / 8)]
-                    ]
-                }
-            ],
-
-            // Home bases (generated from HOME_BASES constant)
-            homeBases: Object.keys(HOME_BASES).reduce((acc, color) => {
-                const baseCoords = HOME_BASES[color];
-                acc[color] = {
-                    type: 'polygon',
-                    coords: [
-                        baseCoords[0], // Top-left
-                        [baseCoords[2][0], baseCoords[0][1]], // Top-right
-                        baseCoords[2], // Bottom-right
-                        [baseCoords[0][0], baseCoords[2][1]]  // Bottom-left
-                    ]
-                };
-                return acc;
-            }, {}),
-
-            // Starting areas (derived from home entrance positions)
-            startAreas: Object.keys(HOME_ENTRANCES).reduce((acc, color) => {
-                const entrancePos = HOME_ENTRANCES[color];
-                const entranceCoord = COMMON_COORDINATES[entrancePos];
-
-                // Determine direction based on color quadrant
-                let startAreaCoords;
-                if (color === 'red') {
-                    startAreaCoords = [
-                        entranceCoord,
-                        [entranceCoord[0] + 1, entranceCoord[1]],
-                        [entranceCoord[0] + 1, entranceCoord[1] + 1],
-                        [entranceCoord[0], entranceCoord[1] + 1]
-                    ];
-                } else if (color === 'green') {
-                    startAreaCoords = [
-                        entranceCoord,
-                        [entranceCoord[0] - 1, entranceCoord[1]],
-                        [entranceCoord[0] - 1, entranceCoord[1] - 1],
-                        [entranceCoord[0], entranceCoord[1] - 1]
-                    ];
-                } else if (color === 'yellow') {
-                    startAreaCoords = [
-                        entranceCoord,
-                        [entranceCoord[0] + 1, entranceCoord[1]],
-                        [entranceCoord[0] + 1, entranceCoord[1] - 1],
-                        [entranceCoord[0], entranceCoord[1] - 1]
-                    ];
-                } else { // blue
-                    startAreaCoords = [
-                        entranceCoord,
-                        [entranceCoord[0] - 1, entranceCoord[1]],
-                        [entranceCoord[0] - 1, entranceCoord[1] + 1],
-                        [entranceCoord[0], entranceCoord[1] + 1]
-                    ];
-                }
-
-                acc[color] = { type: 'square', coords: startAreaCoords };
-                return acc;
-            }, {}),
-
-            // Safe zones (from SAFE_POSITIONS constant)
-            safeZones: SAFE_POSITIONS.map(pos => {
-                const coord = COMMON_COORDINATES[pos];
-                return {
-                    type: 'square',
-                    coords: [
-                        [coord[0] - 1, coord[1] - 1],
-                        [coord[0] + 1, coord[1] - 1],
-                        [coord[0] + 1, coord[1] + 1],
-                        [coord[0] - 1, coord[1] + 1]
-                    ]
-                };
-            }),
-
-            // Center home (calculated from common path center)
-            center: {
-                type: 'square',
-                coords: [
-                    [Math.floor(COMMON_COORDINATES.length / 8) - 1, Math.floor(COMMON_COORDINATES.length / 8) - 1],
-                    [Math.floor(COMMON_COORDINATES.length / 8) + 1, Math.floor(COMMON_COORDINATES.length / 8) - 1],
-                    [Math.floor(COMMON_COORDINATES.length / 8) + 1, Math.floor(COMMON_COORDINATES.length / 8) + 1],
-                    [Math.floor(COMMON_COORDINATES.length / 8) - 1, Math.floor(COMMON_COORDINATES.length / 8) + 1]
-                ]
-            },
-
-            // Common path (from COMMON_COORDINATES)
-            commonPath: {
-                type: 'polyline',
-                coords: COMMON_COORDINATES
-            },
-
-            // Home stretch paths (from HOME_PATHS constant)
-            homePaths: Object.keys(HOME_PATHS).reduce((acc, color) => {
-                acc[color] = {
-                    type: 'polyline',
-                    coords: HOME_PATHS[color]
-                };
-                return acc;
-            }, {})
-        };
-
-        console.log("Generated board paths:", paths); // Debugging output
-        return paths;
+        const paths = Logic.generateBoardPaths()
+        return paths
     }
 
-
+    
 }
 
 module.exports = GameService;
