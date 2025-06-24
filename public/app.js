@@ -161,7 +161,7 @@ function joinGame(id) {
 function rollDice() {
   if (!isMyTurn) return;
 
-  socket.emit('rollDice');
+  socket.emit('rollDice', { gameId: gameId });
   rollDiceBtn.disabled = false;
 }
 
@@ -171,6 +171,7 @@ function playToken(tokenId, rolledValue) {
   socket.emit("playRoll", {
     tokenId: tokenId,
     rolledValue: rolledValue,
+    gameId: gameId
   });
 
   selectedToken = null;
@@ -179,7 +180,7 @@ function playToken(tokenId, rolledValue) {
 function skipTurn() {
   if (!isMyTurn) return;
 
-  socket.emit('skipTurn');
+  socket.emit('skipTurn', { gameId: gameId });
   rollDiceBtn.disabled = true;
   skipTurnBtn.disabled = true;
 }
