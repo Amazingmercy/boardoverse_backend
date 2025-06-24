@@ -79,7 +79,8 @@ This documentation describes the WebSocket API for a Ludo-style board game imple
   ```typescript
   {
     tokenId: string,    // Format "COLOR-INDEX" (e.g., "RED-0")
-    rolledValue: number // Dice value to use (1-6)
+    rolledValue: number, // Dice value to use (1-6)
+    gameId: string
   }
   ```
 - **Server Response**: Broadcasts updated game state
@@ -97,7 +98,8 @@ This documentation describes the WebSocket API for a Ludo-style board game imple
   ```typescript
   {
     playerId: number,   // Player who rolled
-    dice: number[]      // Array of dice values (typically 2 values)
+    dice: number[]   ,  // Array of dice values (typically 2 values)
+    gameId: string
   }
   ```
 
