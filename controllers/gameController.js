@@ -10,23 +10,23 @@ class GameController {
 
     registerHandlers() {
         this.socket.on("createGame", (opts, cb) => this.createGame(opts, cb));
-        this.socket.on("joinGame", (id, cb) => this.joinGame(id, cb));
+        this.socket.on("joinGame", (data, cb) => this.joinGame(data, cb));
         this.socket.on("getBoardPaths", (cb) => this.generateBoardPaths(cb));
-        this.socket.on("rollDice", () => this.rollDice());
+        this.socket.on("rollDice", (data) => this.rollDice(data));
         this.socket.on("playRoll", (data) => this.playRoll(data));
-        this.socket.on("skipTurn", () => this.skipTurn());
+        this.socket.on("skipTurn", (data) => this.skipTurn(data));
         this.socket.on("disconnect", () => this.disconnect());
 
         console.log(`Socket connected: ${this.socket.id}`);
         return this;
     }
 
-    createGame({ vsComputer }, cb) {
+    createGame({ vsComputer, playerId }, cb) {
         try {
             setInterval(() => this.service.cleanupOldGames(), 3600000);
             const game = this.service.createGame(this.socket.id, vsComputer);
             this.socket.join(game.id);
-            cb({ gameId: game.id, playerId: 0, colors: game.players[0].colors });
+            cb({ gameId: game.id, playerId, colors: game.players[0].colors });
             if (vsComputer) {
                 // Immediately broadcast initial state for AI games
                 this.broadcastState(game);
@@ -52,12 +52,12 @@ class GameController {
         }
     }
 
-    joinGame(gameId, cb) {
+    joinGame({ gameId, playerId }, cb) {
         try {
             const game = this.service.joinGame(this.socket.id, gameId);
             this.socket.join(game.id);
             const p = game.players.find((p) => p.id === this.socket.id);
-            cb({ gameId: game.id, playerId: p.playerIndex, colors: p.colors });
+            cb({ gameId: game.id, playerId, id: p.id, colors: p.colors });
             this.broadcastState(game);
         } catch (e) {
             console.error("Error joining game:", e);
@@ -65,9 +65,11 @@ class GameController {
         }
     }
 
-    rollDice() {
+
+
+    rollDice({ gameId }) {
         try {
-            const game = this.service.rollDice(this.socket.id);
+            const game = this.service.rollDice(gameId, this.socket.id);
             this.broadcastDice(game);
             this.broadcastState(game);
         } catch (error) {
@@ -76,9 +78,10 @@ class GameController {
         }
     }
 
-    playRoll({ tokenId, rolledValue }) {
+
+    playRoll({ tokenId, rolledValue, gameId }) {
         try {
-            const game = this.service.playRoll(this.socket.id, tokenId, rolledValue);
+            const game = this.service.playRoll(gameId, this.socket.id, tokenId, rolledValue);
             this.broadcastState(game);
         } catch (error) {
             console.error("Error playing roll:", error);
@@ -86,9 +89,9 @@ class GameController {
         }
     }
 
-    skipTurn() {
+    skipTurn({ gameId }) {
         try {
-            const game = this.service.skipTurn(this.socket.id);
+            const game = this.service.skipTurn(gameId, this.socket.id);
             this.broadcastState(game);
         } catch (error) {
             console.error("Error skipping turn:", error);

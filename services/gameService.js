@@ -30,7 +30,7 @@ class GameService {
      */
     static getInstance() {
         return this.instance || (this.instance = new GameService());
-        
+
     }
 
 
@@ -42,15 +42,15 @@ class GameService {
      * @param {boolean} vsComputer - Whether this is a single-player game against AI
      * @returns {Object} The newly created game object
      */
-    createGame(socketId, vsComputer) {
+    createGame(socketId, vsComputer, playerId) {
         // Generate a short, unique game ID
         const id = uuidv4().slice(0, 6);
 
         // Initialize players array with the creator
-        const players = [{ id: socketId, playerIndex: 0, colors: ['red', 'yellow'] }];
+        const players = [{ playerId, id: socketId, playerIndex: 0, colors: ['red', 'yellow'] }];
 
         // Add AI player if single-player mode
-        if (vsComputer) players.push({ id: 'AI', playerIndex: 1, colors: ['green', 'blue'] });
+        if (vsComputer) players.push({ playerId: 'AI', id: 'AI', playerIndex: 1, colors: ['green', 'blue'] });
 
         // Create game state object
         const game = {
@@ -85,7 +85,7 @@ class GameService {
      * @returns {Object} The updated game object
      * @throws {Error} If the game doesn't exist or is full
      */
-    joinGame(socketId, gameId) {
+    joinGame(socketId, gameId, playerId) {
         const game = this.games[gameId];
 
         // Validate game exists and has room
@@ -93,7 +93,7 @@ class GameService {
         if (game.players.length >= 2) throw new Error('Game is already full');
 
         // Add player to the game
-        game.players.push({ id: socketId, playerIndex: 1, colors: ['green', 'blue'] });
+        game.players.push({ playerId, id: socketId, playerIndex: 1, colors: ['green', 'blue'] });
 
         // Associate socket with game
         this.playerSockets[socketId] = gameId;
@@ -106,58 +106,62 @@ class GameService {
     }
 
 
-/**
- * Roll the dice for a player's turn
- * @param {string} socketId - The socket ID of the player rolling
- * @returns {Object} The updated game object
- * @throws {Error} If it's not the player's turn
- */
-rollDice(socketId) {
-    const game = this._getGameBySocket(socketId);
-    const pIdx = game.players.findIndex(p => p.id === socketId);
+    /**
+     * Roll the dice for a player's turn
+     * @param {string} socketId - The socket ID of the player rolling
+     * @returns {Object} The updated game object
+     * @throws {Error} If it's not the player's turn
+     */
+    rollDice(gameId, socketId) {
+        const game = this.games[gameId];
+        if (!game) throw new Error('Game not found');
 
-    // Validate it's the player's turn
-    if (pIdx !== game.currentPlayer) {
-        // If it's not their turn, ensure their dice display is empty as they can't roll.
-        // This handles cases where a player might try to roll out of turn.
-        game.rolledValue = [];
-        throw new Error('Not your turn');
-    }
 
-    // Generate two random dice rolls (1-6)
-    const rolls = [1, 2].map(() => Math.floor(Math.random() * 6) + 1);
+        const pIdx = game.players.findIndex(p => p.id === socketId);
+        if (!pIdx) throw new Error('Player with index not found');
 
-    game.originalRolls = [...rolls];
-    game.currentRolls = [...rolls]; // These are the rolls currently available for token movement
-    game.rolledValue = [...rolls];  // This specifically holds the values to be displayed
-
-    // Temporarily set game.diceValue for internal validation checks, then reset it.
-    let hasValidMove = false;
-    // Loop through the rolled dice to check if any move is valid
-    for (const val of game.currentRolls) {
-        game.diceValue = val; // Set the current dice value for the isValidMove check
-        if (Logic.checkForValidMoves(game, pIdx)) {
-            hasValidMove = true;
-            break; // Found at least one valid move, no need to check further
+        // Validate it's the player's turn
+        if (player !== game.currentPlayer) {
+            // If it's not their turn, ensure their dice display is empty as they can't roll.
+            // This handles cases where a player might try to roll out of turn.
+            game.rolledValue = [];
+            throw new Error('Not your turn');
         }
-    }
 
-    // Reset the dice value after checking
-    game.diceValue = 0;
+        // Generate two random dice rolls (1-6)
+        const rolls = [1, 2].map(() => Math.floor(Math.random() * 6) + 1);
 
-    // If no valid moves are possible with the rolled dice, end the turn immediately.
-    if (!hasValidMove) {
-        Logic.nextTurn(game); 
+        game.originalRolls = [...rolls];
+        game.currentRolls = [...rolls]; // These are the rolls currently available for token movement
+        game.rolledValue = [...rolls];  // This specifically holds the values to be displayed
 
-        // If it's an AI game and it's now the AI's turn, trigger the AI move after a delay.
-        if (game.vsComputer && game.players[game.currentPlayer].id === 'AI') {
-            setTimeout(() => {
-                Logic.makeComputerMove(game);
-            }, 1500); // Small delay for better user experience
+        // Temporarily set game.diceValue for internal validation checks, then reset it.
+        let hasValidMove = false;
+        // Loop through the rolled dice to check if any move is valid
+        for (const val of game.currentRolls) {
+            game.diceValue = val; // Set the current dice value for the isValidMove check
+            if (Logic.checkForValidMoves(game, player)) {
+                hasValidMove = true;
+                break; // Found at least one valid move, no need to check further
+            }
         }
+
+        // Reset the dice value after checking
+        game.diceValue = 0;
+
+        // If no valid moves are possible with the rolled dice, end the turn immediately.
+        if (!hasValidMove) {
+            Logic.nextTurn(game);
+
+            // If it's an AI game and it's now the AI's turn, trigger the AI move after a delay.
+            if (game.vsComputer && game.players[game.currentPlayer].id === 'AI') {
+                setTimeout(() => {
+                    Logic.makeComputerMove(game);
+                }, 1500); // Small delay for better user experience
+            }
+        }
+        return game;
     }
-    return game;
-}
 
     /**
      * Play a token move using a specific dice roll
@@ -167,45 +171,50 @@ rollDice(socketId) {
      * @returns {Object} The updated game object
      * @throws {Error} If the move is invalid
      */
-    playRoll(socketId, tokenId, rolledValue) {
-        const game = this._getGameBySocket(socketId);
+    playRoll(gameId, socketId, tokenId, rolledValue) {
+        const game = this.games[gameId];
+        if (!game) throw new Error('Game not found');
 
-  // Find the token
-  const token = game.tokens.find(t => t.id === tokenId);
-  if (!token) throw new Error('Token not found');
+        // Find the token
+        const token = game.tokens.find(t => t.id === tokenId);
+        if (!token) throw new Error('Token not found');
 
-  // Find a matching die face in currentRolls
-  const idx = game.currentRolls.findIndex(v => v === rolledValue);
-  if (idx < 0) throw new Error('Invalid roll value');
+        // Find player by socketId to verify ownership
+        const player = game.players.find(p => p.id === socketId);
+        if (!player) throw new Error('Player not found in game');
 
-  // Use that face to move
-  game.diceValue = rolledValue;
+        // Find a matching die face in currentRolls
+        const idx = game.currentRolls.findIndex(v => v === rolledValue);
+        if (idx < 0) throw new Error('Invalid roll value');
 
-  // Validate the move
-  if (!Logic.isValidMove(game, token)) throw new Error('Invalid move');
+        // Use that face to move
+        game.diceValue = rolledValue;
 
-  // Execute the move
-  Logic.moveToken(game, token);
+        // Validate the move
+        if (!Logic.isValidMove(game, token)) throw new Error('Invalid move');
 
-  // Remove exactly that one die from currentRolls
-  game.currentRolls.splice(idx, 1);
+        // Execute the move
+        Logic.moveToken(game, token);
 
-  // If no more rolls or no valid moves remain, advance turn
-  if (
-    game.currentRolls.length === 0 ||
-    !Logic.checkForValidMoves(game, game.currentPlayer)
-  ) {
-    Logic.nextTurn(game);
-  }
+        // Remove exactly that one die from currentRolls
+        game.currentRolls.splice(idx, 1);
 
-  // If it’s AI’s turn, schedule the AI move
-  if (game.vsComputer && game.currentPlayer === 1) {
-    setTimeout(() => {
-      Logic.makeComputerMove(game);
-    }, 1000);
-  }
+        // If no more rolls or no valid moves remain, advance turn
+        if (
+            game.currentRolls.length === 0 ||
+            !Logic.checkForValidMoves(game, game.currentPlayer)
+        ) {
+            Logic.nextTurn(game);
+        }
 
-  return game;
+        // If it’s AI’s turn, schedule the AI move
+        if (game.vsComputer && game.currentPlayer === 1) {
+            setTimeout(() => {
+                Logic.makeComputerMove(game);
+            }, 1000);
+        }
+
+        return game;
     }
 
     /**
@@ -213,10 +222,13 @@ rollDice(socketId) {
      * @param {string} socketId - The socket ID of the player skipping
      * @returns {Object} The updated game object
      */
-    skipTurn(socketId) {
-        const game = this._getGameBySocket(socketId);
-        const pIdx = game.players.findIndex(p => p.id === socketId);
+    skipTurn(gameId, socketId) {
+        const game = this.games[gameId];
+        if (!game) throw new Error('Game not found');
 
+
+        const pIdx = game.players.findIndex(p => p.id === socketId);
+        if (!pIdx) throw new Error('Player with index not found');
         // Validate it's the player's turn
         if (pIdx !== game.currentPlayer) throw new Error('Not your turn');
 
@@ -233,7 +245,7 @@ rollDice(socketId) {
         return game;
     }
 
-    
+
     /**
      * Handle a player disconnecting
      * @param {string} socketId - The socket ID of the disconnected player
@@ -252,14 +264,14 @@ rollDice(socketId) {
             const player = game.players.find(p => p.id === socketId);
             if (player) {
                 player.disconnected = true;
-                
+
                 // Keep the game alive for a reconnect window (e.g., 10 minutes)
                 player.disconnectTimer = setTimeout(() => {
                     // After timeout, remove the player
                     game.players = game.players.filter(p => p.id !== socketId);
-                    
+
                     // Clean up empty games
-                    if (game.players.length === 0 || 
+                    if (game.players.length === 0 ||
                         (game.players.length === 1 && game.players[0].id === 'AI')) {
                         delete this.games[gameId];
                     }
@@ -340,7 +352,7 @@ rollDice(socketId) {
         return paths
     }
 
-    
+
 }
 
 module.exports = GameService;

@@ -40,13 +40,13 @@ This documentation describes the WebSocket API for a Ludo-style board game imple
   ```typescript
   {
     vsComputer: boolean // true for single-player vs AI
+    playerId: string
   }
   ```
 - **Response**: Callback with:
   ```typescript
   {
     gameId: string,     // 6-character game ID
-    playerId: number,   // 0 (first player)
     colors: string[]    // ['red', 'yellow']
   }
   ```
@@ -58,7 +58,7 @@ This documentation describes the WebSocket API for a Ludo-style board game imple
   ```typescript
   {
     gameId: string,     // Same as input
-    playerId: number,   // 1 (second player)
+    playerId: string,  
     colors: string[]    // ['green', 'blue']
   }
   ```
@@ -80,14 +80,19 @@ This documentation describes the WebSocket API for a Ludo-style board game imple
   {
     tokenId: string,    // Format "COLOR-INDEX" (e.g., "RED-0")
     rolledValue: number, // Dice value to use (1-6)
-    gameId: string
+    gameId: string,
   }
   ```
 - **Server Response**: Broadcasts updated game state
 
 #### `skipTurn`
 - **Purpose**: Skip current turn when no valid moves
-- **Payload**: None
+- **Payload**: 
+  ```typescript
+  {
+    gameId: string,
+  }
+  ```
 - **Server Response**: Broadcasts updated game state
 
 ### Server-to-Client Events
@@ -97,7 +102,7 @@ This documentation describes the WebSocket API for a Ludo-style board game imple
 - **Payload**: 
   ```typescript
   {
-    playerId: number,   // Player who rolled
+    playerId: string,  
     dice: number[]   ,  // Array of dice values (typically 2 values)
     gameId: string
   }
@@ -221,21 +226,23 @@ The server may send error messages through the `error` event. Common errors incl
 
 ```javascript
 // Basic frontend implementation example
-const socket = io('ws://localhost:3000');
+const socket = io('ws://boardoverse-backend.onrender.com');
+
 
 // Set up event handlers
 socket.on('gameStateUpdated', (state) => {
   console.log('Game state updated:', state);
   // Update UI with new state
+  currentGameId = state.gameId; // Store the gameId from updates
 });
 
 socket.on('diceRolled', (data) => {
-  console.log('Dice rolled:', data.dice);
+  console.log(`${data.playerId} rolled:`, data.dice);
   // Show dice animation
 });
 
-socket.on('playerDisconnected', () => {
-  console.log('Opponent disconnected');
+socket.on('playerDisconnected', ({playerId}) => {
+  console.log('Player disconnected:', playerId);
   // Show disconnect message
 });
 
@@ -245,26 +252,32 @@ socket.on('error', (error) => {
 });
 
 // Create a new game
-function createGame(vsComputer) {
-  socket.emit('createGame', { vsComputer }, (response) => {
+function createGame(vsComputer, playerId) {
+  socket.emit('createGame', { 
+    vsComputer, 
+    playerId 
+  }, (response) => {
     if (response.error) {
       console.error(response.error);
       return;
     }
     console.log('Game created:', response.gameId);
-    // Store game ID and player ID
+    currentGameId = response.gameId; // Store the game ID
   });
 }
 
 // Join existing game
-function joinGame(gameId) {
-  socket.emit('joinGame', gameId, (response) => {
+function joinGame(gameId, playerId) {
+  socket.emit('joinGame', { 
+    gameId,
+    playerId 
+  }, (response) => {
     if (response.error) {
       console.error(response.error);
       return;
     }
     console.log('Joined game:', response.gameId);
-    // Store game ID and player ID
+    currentGameId = response.gameId; // Store the game ID
   });
 }
 
@@ -278,17 +291,33 @@ function getBoardData() {
 
 // Roll dice
 function rollDice() {
-  socket.emit('rollDice');
+  if (!currentGameId) {
+    console.error('No active game');
+    return;
+  }
+  socket.emit('rollDice', { gameId: currentGameId });
 }
 
 // Move token
 function moveToken(tokenId, diceValue) {
-  socket.emit('playRoll', { tokenId, rolledValue: diceValue });
+  if (!currentGameId) {
+    console.error('No active game');
+    return;
+  }
+  socket.emit('playRoll', { 
+    gameId: currentGameId,
+    tokenId, 
+    rolledValue: diceValue 
+  });
 }
 
 // Skip turn
 function skipTurn() {
-  socket.emit('skipTurn');
+  if (!currentGameId) {
+    console.error('No active game');
+    return;
+  }
+  socket.emit('skipTurn', { gameId: currentGameId });
 }
 ```
 
