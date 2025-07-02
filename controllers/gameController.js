@@ -97,16 +97,32 @@ class GameController {
 
 
     rollDice({ gameId }) {
-        try {
-            const game = this.service.rollDice(gameId, this.socket.id);
-            this.broadcastDice(game);
-            this.broadcastState(game);
-        } catch (error) {
-            console.error("Error rolling dice:", error);
-            this.socket.emit("error", { message: error.message });
+    try {
+        const playerId = this.socket.handshake.auth.playerId; // Make sure this is set on connection
+        // console.log(this.socket.handshake)
+        
+        if (!playerId) {
+            throw new Error("Player authentication missing");
+        }
+
+        const game = this.service.rollDice(gameId, playerId);
+        this.broadcastDice(game);
+        this.broadcastState(game);
+        
+    } catch (error) {
+        console.error("Roll dice error:", error);
+        this.socket.emit("game_error", {
+            action: "roll_dice",
+            message: error.message,
+            isTurnError: error.message.includes("Not your turn")
+        });
+        
+        // Special case: If player not found, force reconnect
+        if (error.message.includes("Player not found")) {
+            console.log("force_reconnect");
         }
     }
-
+}
 
     playRoll({ tokenId, rolledValue, gameId }) {
         try {
@@ -179,12 +195,14 @@ class GameController {
             const player = game.players.find((p) => p.id === socketId);
             const playerIndex = player ? player.playerIndex : -1;
 
+            console.log("Compose", game)
+
             const playData = {
                 tokens: base.tokens,
                 dice: base.dice,
                 myTurn: playerIndex === game.currentPlayer,
                 gameOver: game.gameOver,
-                winner: game.winners.length ? game.winners[0] : null,
+                winner: game.winners ? game.winners[0] : null,
             };
             return playData;
         } catch (error) {

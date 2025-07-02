@@ -22,8 +22,16 @@ class GameService {
         this.games = {};
         // Map socket IDs to game IDs for quick lookup
         this.playerSockets = {};
+        this.SAVE_DIR = path.join(__dirname, 'game_states'); // Folder for saves
+        this._ensureSaveDir();
     }
 
+    // Create directory if it doesn't exist
+     _ensureSaveDir() {
+        if (!fs.existsSync(this.SAVE_DIR)) {
+            fs.mkdirSync(this.SAVE_DIR);
+        }
+    }
     /**
      * Singleton pattern implementation to ensure only one instance exists
      * @returns {GameService} The singleton instance of GameService
@@ -33,7 +41,83 @@ class GameService {
 
     }
 
+    saveGameState(gameId) {
+    const game = this.games[gameId];
+    if (!game) return;
 
+    const filePath = path.join(this.SAVE_DIR, `${gameId}.json`);
+    
+    // Create save-safe version (remove sockets and timers)
+    const dataToSave = {
+        ...game,
+        players: game.players.map(player => ({
+            playerId: player.playerId,
+            playerIndex: player.playerIndex,
+            colors: player.colors,
+            tokens: player.tokens
+        })),
+        tokens: game.tokens,
+        currentPlayer: game.currentPlayer,
+        diceValue: game.diceValue,
+        gameOver: game.gameOver,
+        rolledValue: game.rolledValue,
+        vsComputer: game.vsComputer,
+        createdAt: game.createdAt
+    };
+
+    fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
+}
+
+  // Load game state from file
+  loadGameState(gameId) {
+    const filePath = path.join(this.SAVE_DIR, `${gameId}.json`);
+    if (!fs.existsSync(filePath)) return null;
+
+    const rawData = fs.readFileSync(filePath, 'utf-8');
+    return JSON.parse(rawData);
+  }
+
+
+  // Initialize game from saved state (if available)
+  initializeGame(gameId) {
+    const savedState = this.loadGameState(gameId);
+    if (!savedState) return null;
+
+    // Restore game state with proper defaults
+    const restoredGame = {
+        ...savedState,
+        // Players need socket-related properties initialized
+        players: savedState.players.map(p => ({
+            ...p,
+            id: null,  // Will be set when player rejoins
+            disconnected: true,
+            disconnectTimer: null,
+            // Ensure all required player properties exist
+            tokens: p.tokens || [],
+            colors: p.colors || (p.playerIndex === 0 ? ['red', 'yellow'] : ['green', 'blue'])
+        })),
+        
+        // Initialize volatile properties
+        playerSockets: {},
+        lastActivity: Date.now(),
+        
+        // Ensure game flow properties exist
+        currentRolls: savedState.currentRolls || [],
+        rolledValue: savedState.rolledValue || [],
+        diceValue: savedState.diceValue || 0,
+     
+        
+        // Initialize timers and AI if needed
+        aiTimer: null,
+        
+        // Ensure tokens exist and are properly formatted
+        tokens: savedState.tokens || Logic.initializeTokens()
+    };
+
+    this.games[gameId] = restoredGame;
+    console.log(`Successfully loaded game ${gameId} from saved state`);
+    return restoredGame;
+}
 
 
     /**
@@ -74,7 +158,7 @@ class GameService {
 
         // Associate socket with game
         this.playerSockets[socketId] = id;
-
+        this.saveGameState(game.id)
         return game;
     }
 
@@ -92,7 +176,7 @@ class GameService {
 
         // Validate game exists and has room
         if (!game) throw new Error('Game does not exist');
-        if (game.players.length >= 2) throw new Error('Game is already full');
+        
 
         // Check if player was already in the game (reconnecting)
         const existingPlayer = game.players.find(p => p.playerId === playerId);
@@ -100,6 +184,8 @@ class GameService {
             existingPlayer.id = socketId; // Update socket ID
             this.playerSockets[socketId] = gameId;
             return game;
+        } else {
+            if (game.players.length >= 2) throw new Error('Game is already full');
         }
 
         // Add player to the game
@@ -112,6 +198,7 @@ class GameService {
         game.gameStarted = true;
         game.lastActivity = Date.now(); // Update activity timestamp
 
+        this.saveGameState(gameId)
         return game;
     }
 
@@ -123,20 +210,20 @@ class GameService {
      * @returns {Object} The updated game object
      * @throws {Error} If it's not the player's turn
      */
-    rollDice(gameId, socketId) {
+
+
+    rollDice(gameId, playerId) {
         const game = this.games[gameId];
         if (!game) throw new Error('Game not found');
 
+        // Find player by playerId
+        const player = game.players.find(p => p.playerId === playerId);
+        if (!player) throw new Error('Player not found in game');
 
-        const pIdx = game.players.findIndex(p => p.id === socketId);
-        if (!pIdx) throw new Error('Player with index not found');
-
-        // Validate it's the player's turn
-        if (player !== game.currentPlayer) {
-            // If it's not their turn, ensure their dice display is empty as they can't roll.
-            // This handles cases where a player might try to roll out of turn.
-            game.rolledValue = [];
-            throw new Error('Not your turn');
+        // Validate it's the player's turn using playerIndex
+        if (player.playerIndex !== game.currentPlayer) {
+            game.rolledValue = []; // Clear any existing rolls
+            throw new Error(`Not your turn. Current player: ${game.currentPlayer}`);
         }
 
         // Generate two random dice rolls (1-6)
@@ -151,7 +238,7 @@ class GameService {
         // Loop through the rolled dice to check if any move is valid
         for (const val of game.currentRolls) {
             game.diceValue = val; // Set the current dice value for the isValidMove check
-            if (Logic.checkForValidMoves(game, player)) {
+            if (Logic.checkForValidMoves(game, player.playerIndex)) {
                 hasValidMove = true;
                 break; // Found at least one valid move, no need to check further
             }
@@ -171,9 +258,9 @@ class GameService {
                 }, 1500); // Small delay for better user experience
             }
         }
+        this.saveGameState(gameId)
         return game;
     }
-
     /**
      * Play a token move using a specific dice roll
      * @param {string} socketId - The socket ID of the player making the move
@@ -225,6 +312,7 @@ class GameService {
             }, 1000);
         }
 
+        this.saveGameState(gameId)
         return game;
     }
 
@@ -253,6 +341,7 @@ class GameService {
             }, 1000);
         }
 
+        this.saveGameState(gameId)
         return game;
     }
 
@@ -294,13 +383,18 @@ class GameService {
     }
 
     rejoinGame(socketId, gameId, playerId) {
+        // Try to load from file if not in memory
+        if (!this.games[gameId]) {
+            this.initializeGame(gameId);
+        }
+        
         const game = this.games[gameId];
         if (!game) throw new Error("Game not found");
 
         const player = game.players.find(p => p.playerId === playerId);
         if (!player) throw new Error("Player not in game");
 
-        // Update socket ID
+        // Update socket ID and connection status
         player.id = socketId;
         player.disconnected = false;
         if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
@@ -308,9 +402,21 @@ class GameService {
         this.playerSockets[socketId] = gameId;
         game.lastActivity = Date.now();
 
-        return game;
+        // Return the client-safe state
+        return {
+            id: game.id,
+            players: game.players.map(p => ({
+                playerId: p.playerId,
+                playerIndex: p.playerIndex,
+                colors: p.colors
+            })),
+            tokens: game.tokens,
+            currentPlayer: game.currentPlayer,
+            diceValue: game.diceValue,
+            gameOver: game.gameOver,
+            rolledValue: game.rolledValue
+        };
     }
-
 
 
     // handleDisconnect(socketId) {
@@ -408,11 +514,14 @@ class GameService {
             };
         });
 
+      
         return {
-            id: g.id,
-            tokens,
-            dice: g.rolledValue || []
-        };
+        id: g.id,
+        tokens,
+        dice: g.rolledValue || [],
+        currentPlayer: g.currentPlayer, // Added
+        gameOver: g.gameOver // Added
+    };
     }
 
 

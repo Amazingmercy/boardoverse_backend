@@ -1,15 +1,17 @@
 // Global variables
 let socket;
 let gameId = null;
-let playerId = null;
+let playerId = null; // UUID from backend
+let playerIndex = null; // 0-3 index
 let playerColors = [];
 let boardPaths = null;
 let selectedToken = null;
 let currentRolls = [];
-let tokenData = [];
+let gameState = null;
 let isMyTurn = false;
-let gridSize = 40; // Size of each board grid cell in pixels
-
+let gridSize = 40;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 3;
 
 
 // DOM Elements
@@ -18,6 +20,7 @@ const gameContainer = document.getElementById('game-container');
 const createGameBtn = document.getElementById('create-game-btn');
 const createAIGameBtn = document.getElementById('create-ai-game-btn');
 const joinGameBtn = document.getElementById('join-game-btn');
+const rejoinGameBtn = document.getElementById('rejoin-game-btn');
 const gameIdInput = document.getElementById('game-id-input');
 const gameIdDisplay = document.getElementById('game-id');
 const playerNumberDisplay = document.getElementById('player-number');
@@ -32,14 +35,45 @@ const skipTurnBtn = document.getElementById('skip-turn-btn');
 const dice1 = document.getElementById('dice1');
 const dice2 = document.getElementById('dice2');
 
+
 // Connect to the server
 function connectToServer() {
   // Determine the hostname dynamically
-  const host = window.location.hostname === 'localhost' ? 'http://localhost:3000' : window.location.origin;
-  socket = io(host);
+  // Generate or retrieve playerId
+const playerId = localStorage.getItem('playerId') || crypto.randomUUID();
+localStorage.setItem('playerId', playerId); // Store for future sessions
 
+console.log("Player ID:", playerId);
+
+// Determine host URL
+const host = window.location.hostname === 'localhost' 
+  ? 'http://localhost:3000' 
+  : window.location.origin;
+
+// Establish socket connection with all configurations
+socket = io(host, {
+  // Authentication data
+  auth: {
+    playerId: playerId,
+    gameId: gameId || null // current game ID if available
+  },
+  
+  // Reconnection settings
+  reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  
+  // Additional recommended options
+  transports: ['websocket'], // Force WebSocket transport
+  upgrade: false,
+  rememberUpgrade: true,
+  withCredentials: true
+});
   // Setup socket event listeners
   socket.on('connect', onConnect);
+  socket.on('disconnect', onDisconnect);
+  socket.on('reconnect', onReconnect);
+  socket.on('reconnect_failed', onReconnectFailed);
   socket.on('gameStateUpdated', onGameStateUpdated);
   socket.on('diceRolled', onDiceRolled);
   socket.on('playerDisconnected', onPlayerDisconnected);
@@ -65,11 +99,113 @@ function onConnect() {
   });
 }
 
+function onConnect() {
+  console.log('Connected to server');
+  reconnectAttempts = 0;
+
+  // Request board paths
+  socket.emit('getBoardPaths', (paths) => {
+    boardPaths = paths;
+    console.log('Board paths received:', boardPaths);
+
+    // Check for URL game ID first
+    const urlParams = new URLSearchParams(window.location.search);
+    const joinGameId = urlParams.get('join');
+    
+    if (joinGameId) {
+      gameIdInput.value = joinGameId;
+      joinGame(joinGameId);
+    } else {
+      // Then check local storage for existing game
+      checkSavedGame();
+    }
+  });
+}
+
+
+function checkSavedGame() {
+  const savedGame = localStorage.getItem('ludoGame');
+  if (savedGame) {
+    try {
+      const gameData = JSON.parse(savedGame);
+      
+      // Only reconnect if game was recent (within 1 hour)
+      const oneHourAgo = Date.now() - (60 * 60 * 1000);
+      if (gameData.timestamp > oneHourAgo) {
+        rejoinGameBtn.style.display = "block";
+        gameId = gameData.gameId;
+        playerId = gameData.playerId;
+        playerColors = gameData.colors || [];
+        
+        rejoinGame();
+      } else {
+        localStorage.removeItem('ludoGame');
+      }
+    } catch (e) {
+      console.error('Error parsing saved game:', e);
+      localStorage.removeItem('ludoGame');
+    }
+  }
+}
+
+function onDisconnect() {
+  showToast('Disconnected from server. Attempting to reconnect...', 'warning');
+}
+
+function onReconnect(attempt) {
+  showToast(`Reconnected after ${attempt} attempts`, 'success');
+  reconnectAttempts = 0;
+  
+  // Try to rejoin game if we were in one
+  if (gameId && playerId) {
+    rejoinGame();
+  }
+}
+
+function onReconnectFailed() {
+  showToast('Failed to reconnect to server. Please refresh the page.', 'error');
+}
+
+
+
+function rejoinGame() {
+  const savedGame = localStorage.getItem('ludoGame');
+  if (!savedGame) {
+    showToast('No game to rejoin', 'warning');
+    return;
+  }
+
+  const { gameId: savedGameId, playerId: savedPlayerId } = JSON.parse(savedGame);
+  if (!savedGameId || !savedPlayerId) {
+    showToast('No saved game found', 'warning');
+    return;
+  }
+
+  socket.emit('rejoinGame', { gameId: savedGameId, playerId: savedPlayerId }, (response) => {
+    if (response.error) {
+      showToast(response.error, 'error');
+      localStorage.removeItem('ludoGame');
+      return;
+    }
+
+    gameId = response.gameId;
+    playerId = response.playerId;
+    playerIndex = response.playerIndex;
+    playerColors = response.colors || [];
+
+    showGameBoard();
+    showToast('Successfully rejoined game!', 'success');
+  });
+}
+
+
+
+
 function onGameStateUpdated(data) {
   console.log("Game state updated:", data);
-  tokenData = data.tokens || [];
+  gameState = data;
   currentRolls = data.dice || [];
-  isMyTurn = data.myTurn || false;
+  isMyTurn = data.myTurn
 
   // Update turn status
   updateTurnStatus();
@@ -78,11 +214,10 @@ function onGameStateUpdated(data) {
   if (data.gameOver) {
     gameOverBanner.style.display = 'block';
     if (data.winner !== null) {
-      winnerMessage.textContent = data.winner === playerId
+      winnerMessage.textContent = data.winner === playerIndex
         ? 'You won! 🎉'
         : 'You lost. Better luck next time!';
     }
-
     rollDiceBtn.disabled = true;
     skipTurnBtn.disabled = true;
   }
@@ -112,66 +247,92 @@ function onPlayerDisconnected() {
 
 // Game actions
 function createGame(vsComputer) {
-  socket.emit('createGame', { vsComputer }, (response) => {
+  playerId = localStorage.getItem('playerId', playerId);
+  socket.emit('createGame', { vsComputer, playerId }, (response) => {
     if (response.error) {
       showToast(response.error, 'error');
       return;
     }
 
-    // Save game info
     gameId = response.gameId;
-    playerId = response.playerId;
-    playerColors = response.colors || [];
+    playerIndex = response.playerIndex;
+    playerColors = response.colors || ['red', 'yellow'];
 
-    // Show game board
+    saveGameState(gameId, playerId);
     showGameBoard();
-
-
     showToast(`Game created! ID: ${response.gameId}`, 'success');
   });
 }
 
+
 function joinGame(id) {
-  socket.emit('joinGame', id, (response) => {
+ playerId = localStorage.getItem('playerId', playerId);
+  socket.emit('joinGame', { gameId: id, playerId }, (response) => {
     if (response.error) {
       showToast(response.error, 'error');
       return;
     }
 
-    // Save game info
     gameId = response.gameId;
-    playerId = response.playerId;
-    playerColors = response.colors || [];
+    playerIndex = response.playerIndex;
+    playerColors = response.colors || ['green', 'blue']; // Default colors for player 2
 
-    // Show game board
+    saveGameState(gameId, playerId);
     showGameBoard();
-
-    // Save game info in local storage for reconnection
-    localStorage.setItem('ludoGame', JSON.stringify({
-      gameId: response.gameId,
-      playerId: response.playerId,
-      colors: response.colors || [],
-      timestamp: Date.now()
-    }));
-
     showToast(`Joined game ${response.gameId}`, 'success');
   });
 }
 
-function rollDice() {
-  if (!isMyTurn) return;
 
-  socket.emit('rollDice', { gameId: gameId });
-  rollDiceBtn.disabled = false;
+
+function saveGameState(gameId, playerId) {
+  console.log("Saved Game state", gameId, playerId)
+  localStorage.setItem('ludoGame', JSON.stringify({
+    gameId,
+    playerId,
+    timestamp: Date.now()
+  }));
+}
+
+// Add cleanup when leaving page
+window.addEventListener('beforeunload', () => {
+  if (socket) {
+    socket.emit('leaveGame', { gameId, playerId });
+  }
+});
+
+
+function rollDice() {
+  if (!isMyTurn) {
+    showToast("It's not your turn!", 'warning');
+    return;
+  }
+
+  if (!gameId || !socket?.id || !playerId) {
+    showToast("Game connection error", 'error');
+    return;
+  }
+
+  // Disable roll button while processing
+  rollDiceBtn.disabled = true;
+
+  socket.emit('rollDice', { 
+    gameId: gameId,
+  }, (response) => {
+    if (response?.error) {
+      showToast(response.error, 'error');
+      rollDiceBtn.disabled = false;
+    }
+  });
 }
 
 function playToken(tokenId, rolledValue) {
   if (!isMyTurn || currentRolls.length === 0) return;
 
-  socket.emit("playRoll", {
-    tokenId: tokenId,
-    rolledValue: rolledValue,
-    gameId: gameId
+  socket.emit('playRoll', {
+    gameId,
+    tokenId,
+    rolledValue
   });
 
   selectedToken = null;
@@ -180,9 +341,7 @@ function playToken(tokenId, rolledValue) {
 function skipTurn() {
   if (!isMyTurn) return;
 
-  socket.emit('skipTurn', { gameId: gameId });
-  rollDiceBtn.disabled = true;
-  skipTurnBtn.disabled = true;
+  socket.emit('skipTurn', { gameId });
 }
 
 
@@ -190,10 +349,11 @@ function skipTurn() {
 function showGameBoard() {
   gameLobby.style.display = 'none';
   gameContainer.style.display = 'block';
+  rejoinGameBtn.style.display = 'none';
 
   // Update game info
   gameIdDisplay.textContent = gameId;
-  playerNumberDisplay.textContent = playerId !== null ? (playerId + 1).toString() : '';
+  playerNumberDisplay.textContent = playerId !== null ? playerId : '';
 
   // Show player colors
   playerColorsDisplay.innerHTML = '';
@@ -218,6 +378,7 @@ function resizeGameBoard() {
 
   // Adjust grid size based on canvas size
   gridSize = size / 15; // Assuming a 15x15 grid
+  let tokenData = gameState.tokens
 
   // Redraw if data exists
   if (boardPaths && tokenData.length > 0) {
@@ -402,6 +563,7 @@ function drawCenter(ctx) {
 }
 
 function drawTokens(ctx) {
+  let tokenData = gameState.tokens
   tokenData.forEach(token => {
     let tokenX, tokenY;
     if (token.position === -1) {
@@ -505,7 +667,9 @@ function showToast(message, type = 'default') {
 
 
 // Event listeners
+window.addEventListener('resize', resizeGameBoard);
 createGameBtn.addEventListener('click', () => createGame(false));
+rejoinGameBtn.addEventListener('click', rejoinGame);
 createAIGameBtn.addEventListener('click', () => createGame(true));
 joinGameBtn.addEventListener('click', () => joinGame(gameIdInput.value));
 rollDiceBtn.addEventListener('click', rollDice);
@@ -534,6 +698,7 @@ gameBoard.addEventListener('click', (event) => {
 
   let closestToken = null;
   let minDistance = Infinity;
+  let tokenData = gameState.tokens
 
   tokenData.forEach(token => {
     if (!token.isClickable) return;
