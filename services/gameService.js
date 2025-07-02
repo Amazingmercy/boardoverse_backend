@@ -78,6 +78,8 @@ class GameService {
         return game;
     }
 
+
+
     /**
      * Handle a player joining an existing game
      * @param {string} socketId - The socket ID of the joining player
@@ -92,6 +94,14 @@ class GameService {
         if (!game) throw new Error('Game does not exist');
         if (game.players.length >= 2) throw new Error('Game is already full');
 
+        // Check if player was already in the game (reconnecting)
+        const existingPlayer = game.players.find(p => p.playerId === playerId);
+        if (existingPlayer) {
+            existingPlayer.id = socketId; // Update socket ID
+            this.playerSockets[socketId] = gameId;
+            return game;
+        }
+
         // Add player to the game
         game.players.push({ playerId, id: socketId, playerIndex: 1, colors: ['green', 'blue'] });
 
@@ -104,6 +114,7 @@ class GameService {
 
         return game;
     }
+
 
 
     /**
@@ -282,6 +293,90 @@ class GameService {
         return gameId;
     }
 
+    rejoinGame(socketId, gameId, playerId) {
+        const game = this.games[gameId];
+        if (!game) throw new Error("Game not found");
+
+        const player = game.players.find(p => p.playerId === playerId);
+        if (!player) throw new Error("Player not in game");
+
+        // Update socket ID
+        player.id = socketId;
+        player.disconnected = false;
+        if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
+
+        this.playerSockets[socketId] = gameId;
+        game.lastActivity = Date.now();
+
+        return game;
+    }
+
+
+
+    // handleDisconnect(socketId) {
+    //     const gameId = this.playerSockets[socketId];
+    //     const game = this.games[gameId];
+
+    //     delete this.playerSockets[socketId];
+
+    //     if (game) {
+    //         const player = game.players.find(p => p.id === socketId);
+    //         if (player) {
+    //             player.disconnected = true;
+    //             player.disconnectTimer = setTimeout(() => {
+    //                 game.players = game.players.filter(p => p.id !== socketId);
+    //                 if (game.players.length === 0 || (game.players.length === 1 && game.players[0].id === 'AI')) {
+    //                     delete this.games[gameId];
+    //                 }
+    //             }, 10 * 60 * 1000); // 10-minute timeout
+    //         }
+    //     }
+
+    //     return gameId;
+    // }
+
+
+
+    handleDisconnect(socketId) {
+        const gameId = this.playerSockets[socketId];
+        const game = this.games[gameId];
+
+        if (!game) return null; // Game already cleaned up
+
+        delete this.playerSockets[socketId];
+
+        const player = game.players.find(p => p.id === socketId);
+        if (!player) return gameId; // Not a player (e.g., spectator)
+
+        // Mark as disconnected and set 1-hour reconnection window
+        player.disconnected = true;
+        player.disconnectTimer = setTimeout(() => {
+            // Remove player after timeout
+            game.players = game.players.filter(p => p.id !== socketId);
+
+            // Clean up game if no humans left (or only AI remains)
+            const hasHumanPlayers = game.players.some(p => p.id !== 'AI');
+            if (!hasHumanPlayers) {
+                delete this.games[gameId];
+            }
+        }, 60 * 60 * 1000); // 1 hour (was 10 minutes)
+
+        return gameId;
+    }
+
+    cleanupOldGames() {
+        const now = Date.now();
+        const staleTime = 42 * 60 * 60 * 1000; // 42 hours
+
+        for (const gameId in this.games) {
+            const game = this.games[gameId];
+            if (now - game.lastActivity > staleTime) {
+                delete this.games[gameId];
+            }
+        }
+    }
+
+
     /**
      * Builds the game state for client consumption
      * @param {string} gameId - The ID of the game to build state for
@@ -320,21 +415,7 @@ class GameService {
         };
     }
 
-    /**
-     * Get a game by socket ID
-     * @param {string} socketId - The socket ID to look up
-     * @returns {Object} The game object
-     * @throws {Error} If no game is found for the socket
-     * @private
-     */
-    _getGameBySocket(socketId) {
-        const gameId = this.playerSockets[socketId];
-        const game = this.games[gameId];
 
-        if (!game) throw new Error('Game not found');
-
-        return game;
-    }
 
     /**
      * Get the board coordinates for a token

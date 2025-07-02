@@ -11,6 +11,7 @@ class GameController {
     registerHandlers() {
         this.socket.on("createGame", (opts, cb) => this.createGame(opts, cb));
         this.socket.on("joinGame", (data, cb) => this.joinGame(data, cb));
+        this.socket.on("rejoinGame", (data, cb) => this.rejoinGame(data, cb));
         this.socket.on("getBoardPaths", (cb) => this.generateBoardPaths(cb));
         this.socket.on("rollDice", (data) => this.rollDice(data));
         this.socket.on("playRoll", (data) => this.playRoll(data));
@@ -24,7 +25,7 @@ class GameController {
     createGame({ vsComputer, playerId }, cb) {
         try {
             setInterval(() => this.service.cleanupOldGames(), 3600000);
-            const game = this.service.createGame(this.socket.id, vsComputer);
+            const game = this.service.createGame(this.socket.id, vsComputer, playerId);
             this.socket.join(game.id);
             cb({ gameId: game.id, playerId, colors: game.players[0].colors });
             if (vsComputer) {
@@ -36,6 +37,8 @@ class GameController {
             cb({ error: error.message || "Could not create game" });
         }
     }
+
+  
 
     generateBoardPaths(cb) {
         try {
@@ -54,9 +57,16 @@ class GameController {
 
     joinGame({ gameId, playerId }, cb) {
         try {
-            const game = this.service.joinGame(this.socket.id, gameId);
+            const game = this.service.joinGame(this.socket.id, gameId, playerId);
             this.socket.join(game.id);
-            const p = game.players.find((p) => p.id === this.socket.id);
+            const p = game.players.find((p) => p.id === this.socket.id || p.playerId === playerId);
+            
+            // If reconnecting, update socket ID
+            if (p.playerId === playerId && p.id !== this.socket.id) {
+                p.id = this.socket.id; // Update to new socket ID
+                this.playerSockets[this.socket.id] = gameId; // Update mapping
+            }
+
             cb({ gameId: game.id, playerId, id: p.id, colors: p.colors });
             this.broadcastState(game);
         } catch (e) {
@@ -64,6 +74,25 @@ class GameController {
             cb({ error: e.message });
         }
     }
+
+    rejoinGame({ playerId, gameId }, cb) {
+        try {
+            const game = this.service.rejoinGame(this.socket.id, gameId, playerId);
+            this.socket.join(game.id);
+            const player = game.players.find(p => p.playerId === playerId);
+            
+            cb({ 
+                success: true,
+                gameId: game.id,
+                playerId,
+                colors: player.colors
+            });
+            this.broadcastState(game);
+        } catch (e) {
+            cb({ error: e.message });
+        }
+    }
+
 
 
 

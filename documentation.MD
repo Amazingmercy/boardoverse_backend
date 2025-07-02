@@ -228,7 +228,11 @@ The server may send error messages through the `error` event. Common errors incl
 // Basic frontend implementation example
 const socket = io('ws://boardoverse-backend.onrender.com');
 
-
+socket.on("connect", () => {
+    if (gameId && playerId) {
+        socket.emit("rejoinGame", { playerId, gameId });
+    }
+});
 // Set up event handlers
 socket.on('gameStateUpdated', (state) => {
   console.log('Game state updated:', state);
@@ -261,10 +265,13 @@ function createGame(vsComputer, playerId) {
       console.error(response.error);
       return;
     }
-    console.log('Game created:', response.gameId);
-    currentGameId = response.gameId; // Store the game ID
+    localStorage.setItem("gameId", response.gameId);
+    localStorage.setItem("playerId", playerId);
+    currentGameId = response.gameId
   });
 }
+
+
 
 // Join existing game
 function joinGame(gameId, playerId) {
