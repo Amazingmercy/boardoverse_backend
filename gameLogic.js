@@ -32,21 +32,21 @@ export const SAFE_SQUARE_INDICES = [
 
 // Main Track Coordinates (52 positions) - Removed .reverse()
 export const TRACK_COORDINATES = [
-  [6,1],[6,2],[6,3],[6,4],[6,5],  // 0-4
-  [5,6],[4,6],[3,6],[2,6],[1,6],  // 5-9
-  [0,6],[0,7],[0,8],              // 10-12 (Green entry at 12)
+  [6, 1], [6, 2], [6, 3], [6, 4], [6, 5],  // 0-4
+  [5, 6], [4, 6], [3, 6], [2, 6], [1, 6],  // 5-9
+  [0, 6], [0, 7], [0, 8],              // 10-12 (Green entry at 12)
 
-  [1,8],[2,8],[3,8],[4,8],[5,8],  // 13-17 (Green start at 13)
-  [6,9],[6,10],[6,11],[6,12],[6,13], // 18-22
-  [6,14],[7,14],[8,14],           // 23-25 (Yellow entry at 25)
+  [1, 8], [2, 8], [3, 8], [4, 8], [5, 8],  // 13-17 (Green start at 13)
+  [6, 9], [6, 10], [6, 11], [6, 12], [6, 13], // 18-22
+  [6, 14], [7, 14], [8, 14],           // 23-25 (Yellow entry at 25)
 
-  [8,13],[8,12],[8,11],[8,10],[8,9],  // 26-30 (Yellow start at 26)
-  [9,8],[10,8],[11,8],[12,8],[13,8],   // 31-35
-  [14,8],[14,7],[14,6],                // 36-38 (Blue entry at 38)
+  [8, 13], [8, 12], [8, 11], [8, 10], [8, 9],  // 26-30 (Yellow start at 26)
+  [9, 8], [10, 8], [11, 8], [12, 8], [13, 8],   // 31-35
+  [14, 8], [14, 7], [14, 6],                // 36-38 (Blue entry at 38)
 
-  [13,6],[12,6],[11,6],[10,6],[9,6],  // 39-43 (Blue start at 39)
-  [8,5],[8,4],[8,3],[8,2],[8,1],     // 44-48
-  [8,0],[7,0],[6,0]                  // 49-51 (Red entry at 51)
+  [13, 6], [12, 6], [11, 6], [10, 6], [9, 6],  // 39-43 (Blue start at 39)
+  [8, 5], [8, 4], [8, 3], [8, 2], [8, 1],     // 44-48
+  [8, 0], [7, 0], [6, 0]                  // 49-51 (Red entry at 51)
 ];
 
 // Common path indices and coordinates
@@ -55,10 +55,10 @@ export const COMMON_COORDINATES = TRACK_COORDINATES;
 
 // Home Path Coordinates per color - Corrected paths
 export const HOME_PATH_COORDINATES = {
-  RED:   [[6,7],[5,7],[4,7],[3,7],[2,7],[1,7]],  // Already moves Up (correct)
-  GREEN: [[7,13],[7,12],[7,11],[7,10],[7,9],[7,8]], // Corrected: Moves Left (inward)
-  YELLOW: [[8,7],[9,7],[10,7],[11,7],[12,7],[13,7]], // Already moves Down (correct)
-  BLUE:  [[7,1],[7,2],[7,3],[7,4],[7,5],[7,6]]   // Corrected: Moves Right (inward)
+  RED: [[6, 7], [5, 7], [4, 7], [3, 7], [2, 7], [1, 7]],  // Already moves Up (correct)
+  GREEN: [[7, 13], [7, 12], [7, 11], [7, 10], [7, 9], [7, 8]], // Corrected: Moves Left (inward)
+  YELLOW: [[8, 7], [9, 7], [10, 7], [11, 7], [12, 7], [13, 7]], // Already moves Down (correct)
+  BLUE: [[7, 1], [7, 2], [7, 3], [7, 4], [7, 5], [7, 6]]   // Corrected: Moves Right (inward)
 };
 
 // Home Entrances (alias for clarity)
@@ -66,10 +66,10 @@ export const HOME_ENTRANCES = PLAYER_HOME_ENTRY_POINTS;
 
 // Base positions for tokens inside their home bases
 export const BASE_TOKEN_POSITIONS = {
-  RED:   [[1,1],[1,4],[4,1],[4,4]],
-  GREEN: [[1,10],[1,13],[4,10],[4,13]],
-  YELLOW:[[10,10],[10,13],[13,10],[13,13]],
-  BLUE:  [[10,1],[10,4],[13,1],[13,4]]
+  RED: [[1, 1], [1, 4], [4, 1], [4, 4]],
+  GREEN: [[1, 10], [1, 13], [4, 10], [4, 13]],
+  YELLOW: [[10, 10], [10, 13], [13, 10], [13, 13]],
+  BLUE: [[10, 1], [10, 4], [13, 1], [13, 4]]
 };
 
 // Aliased home bases
@@ -81,21 +81,21 @@ export const SAFE_POSITIONS = SAFE_SQUARE_INDICES;
 // Final paths including home stretch indices for all players
 // These represent the full sequence a token might take, including entering the home path
 export const FINAL_PATHS = {
-  RED: [...COMMON_PATH.slice(0), 100,101,102,103,104,105], // Example: 0-51 (track), then 100-105 (home path)
-  GREEN: [...COMMON_PATH.slice(13).concat(COMMON_PATH.slice(0,13)), 110,111,112,113,114,115],
-  YELLOW: [...COMMON_PATH.slice(26).concat(COMMON_PATH.slice(0,26)), 120,121,122,123,124,125],
-  BLUE: [...COMMON_PATH.slice(39).concat(COMMON_PATH.slice(0,39)), 130,131,132,133,134,135]
+  RED: [...COMMON_PATH.slice(0), 100, 101, 102, 103, 104, 105], // Example: 0-51 (track), then 100-105 (home path)
+  GREEN: [...COMMON_PATH.slice(13).concat(COMMON_PATH.slice(0, 13)), 110, 111, 112, 113, 114, 115],
+  YELLOW: [...COMMON_PATH.slice(26).concat(COMMON_PATH.slice(0, 26)), 120, 121, 122, 123, 124, 125],
+  BLUE: [...COMMON_PATH.slice(39).concat(COMMON_PATH.slice(0, 39)), 130, 131, 132, 133, 134, 135]
 };
 
 // Aliased home paths for export
 export const HOME_PATHS = HOME_PATH_COORDINATES;
 
-export const COLORS = ['RED','GREEN','YELLOW','BLUE'];
+export const COLORS = ['RED', 'GREEN', 'YELLOW', 'BLUE'];
 
 /** Initialize tokens for all players */
 export function initializeTokens() {
   const tokens = [];
-  const COLORS = ['RED','GREEN','YELLOW','BLUE'];
+  const COLORS = ['RED', 'GREEN', 'YELLOW', 'BLUE'];
   COLORS.forEach((color, pi) => {
     BASE_TOKEN_POSITIONS[color].forEach((homePos, idx) => {
       tokens.push({
@@ -176,7 +176,7 @@ export function generateBoardPaths() {
     // Center area (where tokens finish)
     center: {
       type: 'center',
-      coords: [[7,7]] // Central square
+      coords: [[7, 7]] // Central square
     }
   };
 }
@@ -188,35 +188,35 @@ export function generateBoardPaths() {
  * @returns {Array} [x, y] coordinates.
  */
 export function getCoords(token) {
-    // Center position
-    const center = [Math.floor(GRID_SIZE/2), Math.floor(GRID_SIZE/2)];
+  // Center position
+  const center = [Math.floor(GRID_SIZE / 2), Math.floor(GRID_SIZE / 2)];
 
-    // If token has reached the center
-    if (token.completed) return center;
+  // If token has reached the center
+  if (token.completed) return center;
 
-    // If token is still in home base
-    if (token.position === -1) return token.homeBasePosition;
+  // If token is still in home base
+  if (token.position === -1) return token.homeBasePosition;
 
-    // If token is on the common path (numeric < 100)
-    if (typeof token.position === 'number' && token.position < 100) {
-      const idx = token.position % COMMON_COORDINATES.length;
-      return COMMON_COORDINATES[idx];
-    }
+  // If token is on the common path (numeric < 100)
+  if (typeof token.position === 'number' && token.position < 100) {
+    const idx = token.position % COMMON_COORDINATES.length;
+    return COMMON_COORDINATES[idx];
+  }
 
-    // If token is on the home path (position encoded >= 100 or as H_color_index)
-    const color = token.color;
-    let homeIdx;
-    if (typeof token.position === 'string') {
-      // Position like `H_COLOR_3` (Old format, should ideally be numeric now)
-      const parts = token.position.split('_');
-      homeIdx = parseInt(parts[2]);
-    } else {
-      // Position like `100 + playerIndex * 10 + index_in_home_path`
-      const playerIndex = token.playerIndex;
-      const homePathStart = 100 + playerIndex * 10;
-      homeIdx = token.position - homePathStart;
-    }
-    return HOME_PATH_COORDINATES[color][homeIdx];
+  // If token is on the home path (position encoded >= 100 or as H_color_index)
+  const color = token.color;
+  let homeIdx;
+  if (typeof token.position === 'string') {
+    // Position like `H_COLOR_3` (Old format, should ideally be numeric now)
+    const parts = token.position.split('_');
+    homeIdx = parseInt(parts[2]);
+  } else {
+    // Position like `100 + playerIndex * 10 + index_in_home_path`
+    const playerIndex = token.playerIndex;
+    const homePathStart = 100 + playerIndex * 10;
+    homeIdx = token.position - homePathStart;
+  }
+  return HOME_PATH_COORDINATES[color][homeIdx];
 }
 
 /**
@@ -228,7 +228,7 @@ export function getCoords(token) {
 export function isValidMove(game, token) {
   const diceValue = game.diceValue;
 
-  
+
   // Rule: Must roll a 6 to get out of home base
   if (token.position === -1) {
     return diceValue === 6;
@@ -246,23 +246,23 @@ export function isValidMove(game, token) {
   // Determine actual target position on common track
   let targetCommonTrackPosition = (playerStartOffset + newPositionSteps - 1) % commonPathLength;
   if (targetCommonTrackPosition < 0) { // Handle negative modulo results
-      targetCommonTrackPosition += commonPathLength;
+    targetCommonTrackPosition += commonPathLength;
   }
 
 
   // Check if token is entering home path or moving within it
-  if (token.steps < (commonPathLength + homePathLength) -1 ) { // Before or in home path
-      if (newPositionSteps > commonPathLength + homePathLength -1) {
-          return false; // Overshot the final home square
-      }
+  if (token.steps < (commonPathLength + homePathLength) - 1) { // Before or in home path
+    if (newPositionSteps > commonPathLength + homePathLength - 1) {
+      return false; // Overshot the final home square
+    }
 
-      // Check for overshooting home path
-      if (token.steps <= commonPathLength && newPositionSteps > commonPathLength) {
-          const stepsIntoHomePath = newPositionSteps - commonPathLength;
-          if (stepsIntoHomePath > HOME_COLUMN_LENGTH) {
-              return false; // Overshot home path
-          }
+    // Check for overshooting home path
+    if (token.steps <= commonPathLength && newPositionSteps > commonPathLength) {
+      const stepsIntoHomePath = newPositionSteps - commonPathLength;
+      if (stepsIntoHomePath > HOME_COLUMN_LENGTH) {
+        return false; // Overshot home path
       }
+    }
   }
 
 
@@ -276,22 +276,22 @@ export function isValidMove(game, token) {
 
   // Check for collision with other tokens
   for (const otherToken of game.tokens) {
-      if (otherToken.id === token.id || otherToken.completed) continue;
+    if (otherToken.id === token.id || otherToken.completed) continue;
 
-      const otherTokenGlobalPosition = getProjectedGlobalPosition(otherToken, 0); // Get current global position
+    const otherTokenGlobalPosition = getProjectedGlobalPosition(otherToken, 0); // Get current global position
 
-      // If moving to an occupied square
-      if (targetGlobalPosition === otherTokenGlobalPosition) {
-          // Cannot land on own token
-          if (otherToken.color === token.color) {
-              return false;
-          }
-          // Can capture opponent's token if not on a safe square
-          // If the target position is a safe square, you cannot capture, and thus cannot move there if occupied
-          if (isTargetSafe || isMovingOnHomePath) { // Home path squares are safe
-              return false;
-          }
+    // If moving to an occupied square
+    if (targetGlobalPosition === otherTokenGlobalPosition) {
+      // Cannot land on own token
+      if (otherToken.color === token.color) {
+        return false;
       }
+      // Can capture opponent's token if not on a safe square
+      // If the target position is a safe square, you cannot capture, and thus cannot move there if occupied
+      if (isTargetSafe || isMovingOnHomePath) { // Home path squares are safe
+        return false;
+      }
+    }
   }
 
 
@@ -304,99 +304,99 @@ export function isValidMove(game, token) {
  * @param {Object} token - The token to move.
  */
 export function moveToken(game, token) {
-    const diceValue = game.diceValue;
+  const diceValue = game.diceValue;
 
-    if (!isValidMove(game, token)) {
-        console.warn(`Invalid move attempted for token ${token.id} with dice ${diceValue}`);
-        return;
+  if (!isValidMove(game, token)) {
+    console.warn(`Invalid move attempted for token ${token.id} with dice ${diceValue}`);
+    return;
+  }
+
+  // Move token out of home base
+  if (token.position === -1) {
+    token.position = PLAYER_START_OFFSETS[token.color];
+    token.steps = 1; // Token has moved one step from the base to the start point
+    return;
+  }
+
+  // Capture opponent's token if landed on
+  const targetSteps = token.steps + diceValue;
+  const commonPathLength = TRACK_LENGTH;
+  const homePathLength = HOME_COLUMN_LENGTH;
+
+  let newPosition;
+  let newSteps;
+
+  // Determine if the token is entering or moving within the home path
+  if (token.steps < commonPathLength && targetSteps >= commonPathLength) {
+    // Entering home path
+    const stepsIntoHomePath = targetSteps - commonPathLength;
+    newPosition = 100 + token.playerIndex * 10 + stepsIntoHomePath - 1; // New indexing for home path
+    newSteps = targetSteps;
+  } else if (token.steps >= commonPathLength) {
+    // Already in home path
+    newSteps = targetSteps;
+    const stepsInHomePath = newSteps - commonPathLength;
+    newPosition = 100 + token.playerIndex * 10 + stepsInHomePath;
+
+  } else {
+    // Still on common track
+    newSteps = targetSteps;
+    newPosition = (PLAYER_START_OFFSETS[token.color] - (newSteps - 1) + commonPathLength) % commonPathLength;
+    if (newPosition < 0) newPosition += commonPathLength; // Ensure positive modulo result
+  }
+
+  token.position = newPosition;
+  token.steps = newSteps;
+
+  // Check for capture (only on common path)
+  if (token.steps <= commonPathLength) { // Only check for capture if on common path
+    const targetToken = game.tokens.find(t =>
+      t.position === token.position &&
+      t.color !== token.color &&
+      t.position !== -1 && // Not in home
+      !SAFE_SQUARE_INDICES.includes(token.position) // Not on safe square
+    );
+
+    if (targetToken) {
+      targetToken.position = -1; // Send captured token back to home
+      targetToken.steps = 0;
     }
+  }
 
-    // Move token out of home base
-    if (token.position === -1) {
-        token.position = PLAYER_START_OFFSETS[token.color];
-        token.steps = 1; // Token has moved one step from the base to the start point
-        return;
-    }
-
-    // Capture opponent's token if landed on
-    const targetSteps = token.steps + diceValue;
-    const commonPathLength = TRACK_LENGTH;
-    const homePathLength = HOME_COLUMN_LENGTH;
-
-    let newPosition;
-    let newSteps;
-
-    // Determine if the token is entering or moving within the home path
-    if (token.steps < commonPathLength && targetSteps >= commonPathLength) {
-        // Entering home path
-        const stepsIntoHomePath = targetSteps - commonPathLength;
-        newPosition = 100 + token.playerIndex * 10 + stepsIntoHomePath -1; // New indexing for home path
-        newSteps = targetSteps;
-    } else if (token.steps >= commonPathLength) {
-        // Already in home path
-        newSteps = targetSteps;
-        const stepsInHomePath = newSteps - commonPathLength;
-        newPosition = 100 + token.playerIndex * 10 + stepsInHomePath;
-        
-    } else {
-        // Still on common track
-        newSteps = targetSteps;
-        newPosition = (PLAYER_START_OFFSETS[token.color] - (newSteps - 1) + commonPathLength) % commonPathLength;
-        if (newPosition < 0) newPosition += commonPathLength; // Ensure positive modulo result
-    }
-
-    token.position = newPosition;
-    token.steps = newSteps;
-
-    // Check for capture (only on common path)
-    if (token.steps <= commonPathLength) { // Only check for capture if on common path
-        const targetToken = game.tokens.find(t =>
-            t.position === token.position &&
-            t.color !== token.color &&
-            t.position !== -1 && // Not in home
-            !SAFE_SQUARE_INDICES.includes(token.position) // Not on safe square
-        );
-
-        if (targetToken) {
-            targetToken.position = -1; // Send captured token back to home
-            targetToken.steps = 0;
-        }
-    }
-
-    // Check if token has reached the center (completed)
-    if (token.steps >= commonPathLength + homePathLength) {
-        token.completed = true;
-        token.position = 99; // Indicate completion for drawing (any value > 57)
-        checkWinCondition(game);
-    }
+  // Check if token has reached the center (completed)
+  if (token.steps >= commonPathLength + homePathLength) {
+    token.completed = true;
+    token.position = 99; // Indicate completion for drawing (any value > 57)
+    checkWinCondition(game);
+  }
 }
 
 
 function getProjectedGlobalPosition(token, diceValue) {
-    if (token.position === -1) {
-        if (diceValue === 6) {
-            return PLAYER_START_OFFSETS[token.color];
-        } else {
-            return -1; // Still in home
-        }
-    }
-
-    let projectedSteps = token.steps + diceValue;
-    const commonPathLength = TRACK_LENGTH;
-    const homePathLength = HOME_COLUMN_LENGTH;
-
-    if (projectedSteps >= commonPathLength + homePathLength) {
-        return 99; // Represents completion
-    } else if (projectedSteps >= commonPathLength) {
-        // In home path
-        const stepsInHomePath = projectedSteps - commonPathLength;
-        return 100 + token.playerIndex * 10 + stepsInHomePath -1;
+  if (token.position === -1) {
+    if (diceValue === 6) {
+      return PLAYER_START_OFFSETS[token.color];
     } else {
-        // On common track
-        let projectedCommonPosition = (PLAYER_START_OFFSETS[token.color] + projectedSteps -1) % commonPathLength;
-        if (projectedCommonPosition < 0) projectedCommonPosition += commonPathLength;
-        return projectedCommonPosition;
+      return -1; // Still in home
     }
+  }
+
+  let projectedSteps = token.steps + diceValue;
+  const commonPathLength = TRACK_LENGTH;
+  const homePathLength = HOME_COLUMN_LENGTH;
+
+  if (projectedSteps >= commonPathLength + homePathLength) {
+    return 99; // Represents completion
+  } else if (projectedSteps >= commonPathLength) {
+    // In home path
+    const stepsInHomePath = projectedSteps - commonPathLength;
+    return 100 + token.playerIndex * 10 + stepsInHomePath - 1;
+  } else {
+    // On common track
+    let projectedCommonPosition = (PLAYER_START_OFFSETS[token.color] + projectedSteps - 1) % commonPathLength;
+    if (projectedCommonPosition < 0) projectedCommonPosition += commonPathLength;
+    return projectedCommonPosition;
+  }
 }
 
 
@@ -487,7 +487,7 @@ export function makeComputerMove(game) {
   let bestMove = null;
   // If a 6 is rolled, try to get a token out of the home base
   if (rolls.includes(6)) {
-      bestMove = possibleMoves.find(m => m.r === 6 && m.t.position === -1);
+    bestMove = possibleMoves.find(m => m.r === 6 && m.t.position === -1);
   }
 
   // If no 6 or already out, pick the first valid move
@@ -506,8 +506,8 @@ export function makeComputerMove(game) {
 
   // If a 6 was used and there are remaining rolls, AI takes another turn
   if (bestMove && bestMove.r === 6 && game.currentRolls.length) {
-      setTimeout(() => makeComputerMove(game), 500); // Recursive call for extra turn on 6
+    setTimeout(() => makeComputerMove(game), 500); // Recursive call for extra turn on 6
   } else {
-      nextTurn(game); // End AI turn
+    nextTurn(game); // End AI turn
   }
 }

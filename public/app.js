@@ -1,7 +1,9 @@
+
+
 // Global variables
 let socket;
 let gameId = null;
-let playerId = null; // UUID from backend
+let playerId = localStorage.getItem('playerId') || crypto.randomUUID();
 let playerIndex = null; // 0-3 index
 let playerColors = [];
 let boardPaths = null;
@@ -12,7 +14,8 @@ let isMyTurn = false;
 let gridSize = 40;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 3;
-
+let connectionInitialized = false;
+let connectionStatus = 'disconnected';
 
 // DOM Elements
 const gameLobby = document.getElementById('game-lobby');
@@ -34,41 +37,46 @@ const rollDiceBtn = document.getElementById('roll-dice-btn');
 const skipTurnBtn = document.getElementById('skip-turn-btn');
 const dice1 = document.getElementById('dice1');
 const dice2 = document.getElementById('dice2');
+const toastContainer = document.getElementById('toast-container');
+
 
 
 // Connect to the server
 function connectToServer() {
-  // Determine the hostname dynamically
-  // Generate or retrieve playerId
-const playerId = localStorage.getItem('playerId') || crypto.randomUUID();
-localStorage.setItem('playerId', playerId); // Store for future sessions
+  // Generate a new playerId each time
+  if (connectionInitialized && socket?.connected) {
+    console.log('Already connected');
+    return;
+  }
 
-console.log("Player ID:", playerId);
-
-// Determine host URL
-const host = window.location.hostname === 'localhost' 
-  ? 'http://localhost:3000' 
-  : window.location.origin;
-
-// Establish socket connection with all configurations
-socket = io(host, {
-  // Authentication data
-  auth: {
-    playerId: playerId,
-    gameId: gameId || null // current game ID if available
-  },
+  // Clean up previous connection
+  if (socket) {
+    socket.removeAllListeners();
+    if (socket.connected) socket.disconnect();
+  }
   
-  // Reconnection settings
-  reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
-  reconnectionDelay: 1000,
-  reconnectionDelayMax: 5000,
-  
-  // Additional recommended options
-  transports: ['websocket'], // Force WebSocket transport
-  upgrade: false,
-  rememberUpgrade: true,
-  withCredentials: true
-});
+  console.log('Generated playerId:', playerId);
+  localStorage.setItem('playerId', playerId); // Store playerId in localStorage
+  // Determine host URL
+  const host = window.location.hostname === 'localhost' 
+    ? 'http://localhost:3000' 
+    : window.location.origin;
+
+  // Establish socket connection
+  socket = io(host, {
+    auth: {
+      playerId: playerId,
+      gameId: gameId || null
+    },
+    reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    transports: ['websocket'],
+    upgrade: false,
+    rememberUpgrade: true,
+    withCredentials: true
+  });
+
   // Setup socket event listeners
   socket.on('connect', onConnect);
   socket.on('disconnect', onDisconnect);
@@ -77,28 +85,18 @@ socket = io(host, {
   socket.on('gameStateUpdated', onGameStateUpdated);
   socket.on('diceRolled', onDiceRolled);
   socket.on('playerDisconnected', onPlayerDisconnected);
+  socket.on('game_error', onGameError);
+  socket.on('error', onError);
+  socket.on('connect_error', (err) => {
+    console.error('Connection error:', err);
+    connectionStatus = 'error';
+    showToast(`Connection error: ${err.message}`, 'error');
+  });
+
+  connectionInitialized = true;
 }
 
 // Socket event handlers
-function onConnect() {
-  console.log('Connected to server');
-
-  // Request board paths once connected
-  socket.emit('getBoardPaths', (paths) => {
-    boardPaths = paths
-    console.log('Board paths received:', boardPaths);
-
-    // Check for URL game ID
-    const urlParams = new URLSearchParams(window.location.search);
-    const joinGameId = urlParams.get('join');
-    if (joinGameId) {
-      gameIdInput.value = joinGameId;
-      joinGame(joinGameId);
-    }
-
-  });
-}
-
 function onConnect() {
   console.log('Connected to server');
   reconnectAttempts = 0;
@@ -108,104 +106,90 @@ function onConnect() {
     boardPaths = paths;
     console.log('Board paths received:', boardPaths);
 
-    // Check for URL game ID first
+    // Check for URL game ID
     const urlParams = new URLSearchParams(window.location.search);
     const joinGameId = urlParams.get('join');
     
     if (joinGameId) {
       gameIdInput.value = joinGameId;
       joinGame(joinGameId);
-    } else {
-      // Then check local storage for existing game
-      checkSavedGame();
     }
+    // Note: Removed checkSavedGame() call since we're not using localStorage
   });
-}
-
-
-function checkSavedGame() {
-  const savedGame = localStorage.getItem('ludoGame');
-  if (savedGame) {
-    try {
-      const gameData = JSON.parse(savedGame);
-      
-      // Only reconnect if game was recent (within 1 hour)
-      const oneHourAgo = Date.now() - (60 * 60 * 1000);
-      if (gameData.timestamp > oneHourAgo) {
-        rejoinGameBtn.style.display = "block";
-        gameId = gameData.gameId;
-        playerId = gameData.playerId;
-        playerColors = gameData.colors || [];
-        
-        rejoinGame();
-      } else {
-        localStorage.removeItem('ludoGame');
-      }
-    } catch (e) {
-      console.error('Error parsing saved game:', e);
-      localStorage.removeItem('ludoGame');
-    }
-  }
 }
 
 function onDisconnect() {
   showToast('Disconnected from server. Attempting to reconnect...', 'warning');
+  showReconnectForm();
 }
 
 function onReconnect(attempt) {
   showToast(`Reconnected after ${attempt} attempts`, 'success');
   reconnectAttempts = 0;
+  playerId = localStorage.getItem('playerId') 
   
-  // Try to rejoin game if we were in one
+  console.log('Reconnected successfully');
   if (gameId && playerId) {
-    rejoinGame();
+    socket.emit('rejoinGame', { gameId, playerId }, (response) => {
+      if (!response.error) {
+        onGameStateUpdated(response);
+      }
+    });
   }
 }
 
 function onReconnectFailed() {
   showToast('Failed to reconnect to server. Please refresh the page.', 'error');
+  showReconnectForm();
 }
 
+function onGameError(error) {
+  showToast(error.message || 'Game error occurred', 'error');
+  console.error('Game error:', error);
+  if (error.isTurnError) {
+    rollDiceBtn.disabled = true;
+  }
+}
 
+function onError(error) {
+  showToast(error.message || 'An error occurred', 'error');
+}
 
 function rejoinGame() {
-  const savedGame = localStorage.getItem('ludoGame');
-  if (!savedGame) {
-    showToast('No game to rejoin', 'warning');
+  const gameIdValue = gameIdInput.value.trim();
+  
+  if (!gameIdValue) {
+    showToast('Please enter Game ID to rejoin', 'error');
     return;
   }
 
-  const { gameId: savedGameId, playerId: savedPlayerId } = JSON.parse(savedGame);
-  if (!savedGameId || !savedPlayerId) {
-    showToast('No saved game found', 'warning');
-    return;
-  }
-
-  socket.emit('rejoinGame', { gameId: savedGameId, playerId: savedPlayerId }, (response) => {
+  console.log('Rejoining game with ID:', gameIdValue, playerId);
+  socket.emit('rejoinGame', { gameId: gameIdValue, playerId: playerId }, (response) => {
     if (response.error) {
       showToast(response.error, 'error');
-      localStorage.removeItem('ludoGame');
+      console.log('Rejoin error:', response.error);
       return;
     }
 
-    gameId = response.gameId;
-    playerId = response.playerId;
+    console.log('Rejoined game response:', response);
+
+    // Update global variables with successful rejoin data
+    gameId = gameIdValue;
+    playerId = playerId || response.playerId;
     playerIndex = response.playerIndex;
     playerColors = response.colors || [];
-
+    
     showGameBoard();
+    onGameStateUpdated(response);
     showToast('Successfully rejoined game!', 'success');
   });
 }
-
-
-
 
 function onGameStateUpdated(data) {
   console.log("Game state updated:", data);
   gameState = data;
   currentRolls = data.dice || [];
-  isMyTurn = data.myTurn
+  isMyTurn = data.myTurn;
 
   // Update turn status
   updateTurnStatus();
@@ -218,8 +202,8 @@ function onGameStateUpdated(data) {
         ? 'You won! 🎉'
         : 'You lost. Better luck next time!';
     }
-    rollDiceBtn.disabled = true;
-    skipTurnBtn.disabled = true;
+    // rollDiceBtn.disabled = true;
+    // skipTurnBtn.disabled = true;
   }
 
   // Update dice display
@@ -230,7 +214,7 @@ function onGameStateUpdated(data) {
 }
 
 function onDiceRolled(data) {
-  // Show dice values
+  // Update dice UI
   updateDiceUI(data.dice);
 
   // Display toast message
@@ -247,7 +231,6 @@ function onPlayerDisconnected() {
 
 // Game actions
 function createGame(vsComputer) {
-  playerId = localStorage.getItem('playerId', playerId);
   socket.emit('createGame', { vsComputer, playerId }, (response) => {
     if (response.error) {
       showToast(response.error, 'error');
@@ -255,18 +238,16 @@ function createGame(vsComputer) {
     }
 
     gameId = response.gameId;
-    playerIndex = response.playerIndex;
+    playerIndex = 0; // Creator is always player 0
     playerColors = response.colors || ['red', 'yellow'];
+    console.log('Game created:', response);
 
-    saveGameState(gameId, playerId);
     showGameBoard();
     showToast(`Game created! ID: ${response.gameId}`, 'success');
   });
 }
 
-
 function joinGame(id) {
- playerId = localStorage.getItem('playerId', playerId);
   socket.emit('joinGame', { gameId: id, playerId }, (response) => {
     if (response.error) {
       showToast(response.error, 'error');
@@ -274,33 +255,13 @@ function joinGame(id) {
     }
 
     gameId = response.gameId;
-    playerIndex = response.playerIndex;
-    playerColors = response.colors || ['green', 'blue']; // Default colors for player 2
+    playerIndex = 1; // Joiner is always player 1
+    playerColors = response.colors || ['green', 'blue'];
 
-    saveGameState(gameId, playerId);
     showGameBoard();
     showToast(`Joined game ${response.gameId}`, 'success');
   });
 }
-
-
-
-function saveGameState(gameId, playerId) {
-  console.log("Saved Game state", gameId, playerId)
-  localStorage.setItem('ludoGame', JSON.stringify({
-    gameId,
-    playerId,
-    timestamp: Date.now()
-  }));
-}
-
-// Add cleanup when leaving page
-window.addEventListener('beforeunload', () => {
-  if (socket) {
-    socket.emit('leaveGame', { gameId, playerId });
-  }
-});
-
 
 function rollDice() {
   if (!isMyTurn) {
@@ -316,9 +277,7 @@ function rollDice() {
   // Disable roll button while processing
   rollDiceBtn.disabled = true;
 
-  socket.emit('rollDice', { 
-    gameId: gameId,
-  }, (response) => {
+  socket.emit('rollDice', { gameId }, (response) => {
     if (response?.error) {
       showToast(response.error, 'error');
       rollDiceBtn.disabled = false;
@@ -327,7 +286,10 @@ function rollDice() {
 }
 
 function playToken(tokenId, rolledValue) {
-  if (!isMyTurn || currentRolls.length === 0) return;
+  if (!isMyTurn || currentRolls.length === 0) {
+    showToast("Cannot move token now", 'warning');
+    return;
+  }
 
   socket.emit('playRoll', {
     gameId,
@@ -336,14 +298,17 @@ function playToken(tokenId, rolledValue) {
   });
 
   selectedToken = null;
+  drawBoard(); // Update board to remove selection
 }
 
 function skipTurn() {
-  if (!isMyTurn) return;
+  if (!isMyTurn) {
+    showToast("It's not your turn!", 'warning');
+    return;
+  }
 
   socket.emit('skipTurn', { gameId });
 }
-
 
 // UI Functions
 function showGameBoard() {
@@ -353,7 +318,7 @@ function showGameBoard() {
 
   // Update game info
   gameIdDisplay.textContent = gameId;
-  playerNumberDisplay.textContent = playerId !== null ? playerId : '';
+  playerNumberDisplay.textContent = playerId;
 
   // Show player colors
   playerColorsDisplay.innerHTML = '';
@@ -378,10 +343,9 @@ function resizeGameBoard() {
 
   // Adjust grid size based on canvas size
   gridSize = size / 15; // Assuming a 15x15 grid
-  let tokenData = gameState.tokens
 
   // Redraw if data exists
-  if (boardPaths && tokenData.length > 0) {
+  if (boardPaths && gameState && gameState.tokens) {
     drawBoard();
   }
 }
@@ -394,7 +358,7 @@ function updateTurnStatus() {
   turnStatusDisplay.className = isMyTurn ? 'your-turn' : 'waiting';
 
   // Update buttons
-  rollDiceBtn.disabled = !isMyTurn;
+  rollDiceBtn.disabled = !isMyTurn || currentRolls.length > 0;
   skipTurnBtn.disabled = !isMyTurn || currentRolls.length === 0;
 }
 
@@ -402,21 +366,20 @@ function updateDiceDisplay() {
   if (currentRolls.length === 0) {
     dice1.textContent = '';
     dice2.textContent = '';
-    dice2.style.pointerEvents = 'none';
+    dice1.classList.add('disabled');
     dice2.classList.add('disabled');
   } else if (currentRolls.length === 1) {
     dice1.textContent = currentRolls[0];
     dice2.textContent = '';
-    dice2.style.pointerEvents = 'none';
+    dice1.classList.remove('disabled');
     dice2.classList.add('disabled');
   } else {
     dice1.textContent = currentRolls[0];
     dice2.textContent = currentRolls[1];
-    dice2.style.pointerEvents = '';
+    dice1.classList.remove('disabled');
     dice2.classList.remove('disabled');
   }
 }
-
 
 function updateDiceUI(dice) {
   if (dice.length >= 1) {
@@ -442,7 +405,7 @@ function animateDice(diceElement) {
 }
 
 function drawBoard() {
-  if (!boardPaths || !gameBoard) return;
+  if (!boardPaths || !gameBoard || !gameState) return;
 
   const ctx = gameBoard.getContext('2d');
   const width = gameBoard.width;
@@ -496,12 +459,10 @@ function drawQuadrant(ctx, color, x, y) {
   ctx.strokeStyle = '#000';
   ctx.lineWidth = 1;
   ctx.strokeRect(homeBaseX, homeBaseY, homeBaseSize, homeBaseSize);
-
-  // Removed drawing of startAreas from here as it's handled by drawSafeZones
 }
 
 function drawCommonPath(ctx) {
-  if (!boardPaths || !boardPaths.commonPath) return;
+  if (!boardPaths?.commonPath) return;
   const pathCoords = boardPaths.commonPath.coords;
   ctx.fillStyle = '#ffffff';
   for (let i = 0; i < pathCoords.length; i++) {
@@ -514,7 +475,7 @@ function drawCommonPath(ctx) {
 }
 
 function drawHomePaths(ctx) {
-  if (!boardPaths || !boardPaths.homePaths) return;
+  if (!boardPaths?.homePaths) return;
   Object.entries(boardPaths.homePaths).forEach(([color, path]) => {
     const pathCoords = path.coords;
     ctx.fillStyle = getLightColorHex(color);
@@ -529,25 +490,29 @@ function drawHomePaths(ctx) {
 }
 
 function drawSafeZones(ctx) {
-  if (!boardPaths || !boardPaths.safeZones) return;
+  if (!boardPaths?.safeZones) return;
   boardPaths.safeZones.forEach(zone => {
     if (!zone.coords) return;
-    const [x, y] = zone.coords[0]; // 1) fill the background square in the player color:
-    ctx.fillStyle = getLightColorHex(zone.color); // e.g. '#FF0000' for 'red'
+    const [x, y] = zone.coords[0];
+    ctx.fillStyle = getLightColorHex(zone.color);
     ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
-    ctx.fill();
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x * gridSize, y * gridSize, gridSize, gridSize);
   });
 }
 
 function drawCenter(ctx) {
-  if (!boardPaths || !boardPaths.center) return;
+  if (!boardPaths?.center) return;
   const centerCoords = boardPaths.center.coords;
   if (!centerCoords || centerCoords.length < 1) return;
+  
   const [x, y] = centerCoords[0];
-  const centerSize = gridSize * 2; // Draw colored triangles for center
+  const centerSize = gridSize;
   const colors = ['red', 'green', 'yellow', 'blue'];
   const centerX = x * gridSize + gridSize / 2;
   const centerY = y * gridSize + gridSize / 2;
+  
   ctx.save();
   ctx.translate(centerX, centerY);
   for (let i = 0; i < colors.length; i++) {
@@ -563,90 +528,79 @@ function drawCenter(ctx) {
 }
 
 function drawTokens(ctx) {
-  let tokenData = gameState.tokens
-  tokenData.forEach(token => {
-    let tokenX, tokenY;
-    if (token.position === -1) {
-      // Token is in home base
-      tokenX = token.x;
-      tokenY = token.y;
-    } else if (token.position >= 57) { // Token is in center (completed)
-      const centerCoords = boardPaths.center.coords[0];
-      tokenX = centerCoords[0];
-      tokenY = centerCoords[1];
-    } else { // Token is on common path or home path
-      let coords;
-      if (token.position >= 100) { // Home path
-        const playerIndex = token.playerIndex;
-        const homePathStart = 100 + playerIndex * 10;
-        const homePathOffset = token.position - homePathStart;
-        coords = Object.values(boardPaths.homePaths)[playerIndex].coords[homePathOffset];
-      } else { // Common path
-        coords = boardPaths.commonPath.coords[token.position];
-      }
-      tokenX = coords[0];
-      tokenY = coords[1];
-    }
-
+  if (!gameState?.tokens) return;
+  
+  gameState.tokens.forEach(token => {
     // Convert grid coordinates to canvas pixels
-    const canvasX = tokenX * gridSize + gridSize / 2;
-    const canvasY = tokenY * gridSize + gridSize / 2;
+    const canvasX = token.x * gridSize + gridSize / 2;
+    const canvasY = token.y * gridSize + gridSize / 2;
 
     // Draw the token (circle)
     ctx.beginPath();
-    ctx.arc(canvasX, canvasY, gridSize * 0.4, 0, Math.PI * 2);
+    ctx.arc(canvasX, canvasY, gridSize * 0.3, 0, Math.PI * 2);
     ctx.fillStyle = getColorHex(token.color);
     ctx.fill();
     ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Draw token ID for debugging (optional)
-    ctx.fillStyle = '#000';
-    ctx.font = 'bold ' + (gridSize * 0.3) + 'px Arial';
+    // Draw token ID for identification
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold ' + (gridSize * 0.2) + 'px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(token.id.split('-')[1], canvasX, canvasY);
+    ctx.fillText(token.id.split('-')[1] || token.index, canvasX, canvasY);
 
     // Highlight selected token
     if (selectedToken === token.id) {
-      ctx.strokeStyle = 'cyan';
+      ctx.beginPath();
+      ctx.arc(canvasX, canvasY, gridSize * 0.4, 0, Math.PI * 2);
+      ctx.strokeStyle = '#00ffff';
       ctx.lineWidth = 3;
       ctx.stroke();
     }
 
     // Highlight clickable tokens
     if (token.isClickable) {
-      ctx.strokeStyle = 'white';
+      ctx.beginPath();
+      ctx.arc(canvasX, canvasY, gridSize * 0.35, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
       ctx.stroke();
     }
   });
 }
 
-// Utility functions (getColorHex, getLightColorHex, showToast) - assuming these are defined elsewhere or correctly
+// Utility functions
 function getColorHex(colorName) {
   const colors = {
+    'red': '#FF0000',
+    'green': '#008000',
+    'yellow': '#FFFF00',
+    'blue': '#0000FF',
     'RED': '#FF0000',
     'GREEN': '#008000',
     'YELLOW': '#FFFF00',
     'BLUE': '#0000FF'
   };
-  return colors[colorName.toUpperCase()] || '#CCCCCC';
+  return colors[colorName] || '#CCCCCC';
 }
 
 function getLightColorHex(colorName) {
   const lightColors = {
+    'red': '#FFCCCC',
+    'green': '#CCFFCC',
+    'yellow': '#FFFFCC',
+    'blue': '#CCCCFF',
     'RED': '#FFCCCC',
     'GREEN': '#CCFFCC',
     'YELLOW': '#FFFFCC',
     'BLUE': '#CCCCFF'
   };
-  return lightColors[colorName.toUpperCase()] || '#EEEEEE';
+  return lightColors[colorName] || '#EEEEEE';
 }
 
-function showToast(message, type = 'default') {
-  const toastContainer = document.getElementById('toast-container');
+function showToast(message, type = 'info') {
   if (!toastContainer) {
     console.warn('Toast container not found');
     return;
@@ -665,15 +619,23 @@ function showToast(message, type = 'default') {
   }, 3000);
 }
 
+function showReconnectForm() {
+  rejoinGameBtn.style.display = 'block';
+}
+
+function handleManualReconnect() {
+  rejoinGame(); // Use the updated rejoin function
+}
 
 // Event listeners
 window.addEventListener('resize', resizeGameBoard);
 createGameBtn.addEventListener('click', () => createGame(false));
-rejoinGameBtn.addEventListener('click', rejoinGame);
 createAIGameBtn.addEventListener('click', () => createGame(true));
-joinGameBtn.addEventListener('click', () => joinGame(gameIdInput.value));
+joinGameBtn.addEventListener('click', () => joinGame(gameIdInput.value.trim()));
+rejoinGameBtn.addEventListener('click', handleManualReconnect);
 rollDiceBtn.addEventListener('click', rollDice);
 skipTurnBtn.addEventListener('click', skipTurn);
+
 copyLinkBtn.addEventListener('click', () => {
   if (gameId) {
     const inviteLink = `${window.location.origin}?join=${gameId}`;
@@ -686,9 +648,10 @@ copyLinkBtn.addEventListener('click', () => {
   }
 });
 
-
 // Handle token click
 gameBoard.addEventListener('click', (event) => {
+  if (!gameState?.tokens || !isMyTurn) return;
+
   const rect = gameBoard.getBoundingClientRect();
   const scaleX = gameBoard.width / rect.width;
   const scaleY = gameBoard.height / rect.height;
@@ -698,23 +661,15 @@ gameBoard.addEventListener('click', (event) => {
 
   let closestToken = null;
   let minDistance = Infinity;
-  let tokenData = gameState.tokens
 
-  tokenData.forEach(token => {
+  gameState.tokens.forEach(token => {
     if (!token.isClickable) return;
 
-    // MODIFICATION START
-    // Destructure the array returned by getTokenGridPosition into tokenGridX and tokenGridY
-    const [tokenGridX, tokenGridY] = getTokenGridPosition(token); 
-    // MODIFICATION END
-
-    const dx = (tokenGridX * gridSize + gridSize / 2) - clickX;
-    const dy = (tokenGridY * gridSize + gridSize / 2) - clickY;
+    const dx = (token.x * gridSize + gridSize / 2) - clickX;
+    const dy = (token.y * gridSize + gridSize / 2) - clickY;
     const distance = Math.sqrt(dx * dx + dy * dy);
 
-
-
-    if (distance < minDistance) {
+    if (distance < minDistance && distance < gridSize) {
       minDistance = distance;
       closestToken = token;
     }
@@ -723,26 +678,9 @@ gameBoard.addEventListener('click', (event) => {
   if (closestToken) {
     selectedToken = closestToken.id;
     drawBoard();
+    showToast(`Selected token ${closestToken.id}`, 'info');
   }
 });
-
-function getTokenGridPosition(token) {
-  if (token.position === -1) {
-    return [token.x, token.y];
-  } else if (token.position >= 57) { // Token is in center
-    return boardPaths.center.coords[0];
-  } else {
-    // Determine if it's on common path or home path
-    if (token.position >= 100) { // Home path
-      const playerIndex = token.playerIndex;
-      const homePathStart = 100 + playerIndex * 10;
-      const homePathOffset = token.position - homePathStart;
-      return Object.values(boardPaths.homePaths)[playerIndex].coords[homePathOffset];
-    } else { // Common path
-      return boardPaths.commonPath.coords[token.position];
-    }
-  }
-}
 
 // Handle dice click for selecting roll when token is selected
 dice1.addEventListener('click', () => {
@@ -750,10 +688,8 @@ dice1.addEventListener('click', () => {
     showToast('First select a token to move.', 'warning');
     return;
   }
-  console.log("Dice clicked", selectedToken, currentRolls)
   if (selectedToken && currentRolls.length > 0) {
-    const face = currentRolls[0];
-    playToken(selectedToken, face);
+    playToken(selectedToken, currentRolls[0]);
   }
 });
 
@@ -763,11 +699,16 @@ dice2.addEventListener('click', () => {
     return;
   }
   if (selectedToken && currentRolls.length > 1) {
-    const face = currentRolls[1];
-    playToken(selectedToken, face);
+    playToken(selectedToken, currentRolls[1]);
   }
 });
 
+// Add cleanup when leaving page
+window.addEventListener('beforeunload', () => {
+  if (socket && gameId && playerId) {
+    socket.emit('leaveGame', { gameId, playerId });
+  }
+});
 
 // Initialize connection
 connectToServer();

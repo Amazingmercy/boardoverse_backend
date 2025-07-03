@@ -27,7 +27,7 @@ class GameService {
     }
 
     // Create directory if it doesn't exist
-     _ensureSaveDir() {
+    _ensureSaveDir() {
         if (!fs.existsSync(this.SAVE_DIR)) {
             fs.mkdirSync(this.SAVE_DIR);
         }
@@ -42,82 +42,82 @@ class GameService {
     }
 
     saveGameState(gameId) {
-    const game = this.games[gameId];
-    if (!game) return;
+        const game = this.games[gameId];
+        if (!game) return;
 
-    const filePath = path.join(this.SAVE_DIR, `${gameId}.json`);
-    
-    // Create save-safe version (remove sockets and timers)
-    const dataToSave = {
-        ...game,
-        players: game.players.map(player => ({
-            playerId: player.playerId,
-            playerIndex: player.playerIndex,
-            colors: player.colors,
-            tokens: player.tokens
-        })),
-        tokens: game.tokens,
-        currentPlayer: game.currentPlayer,
-        diceValue: game.diceValue,
-        gameOver: game.gameOver,
-        rolledValue: game.rolledValue,
-        vsComputer: game.vsComputer,
-        createdAt: game.createdAt
-    };
+        const filePath = path.join(this.SAVE_DIR, `${gameId}.json`);
 
-    fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
-}
+        // Create save-safe version (remove sockets and timers)
+        const dataToSave = {
+            ...game,
+            players: game.players.map(player => ({
+                playerId: player.playerId,
+                playerIndex: player.playerIndex,
+                colors: player.colors,
+                tokens: player.tokens
+            })),
+            tokens: game.tokens,
+            currentPlayer: game.currentPlayer,
+            diceValue: game.diceValue,
+            gameOver: game.gameOver,
+            rolledValue: game.rolledValue,
+            vsComputer: game.vsComputer,
+            createdAt: game.createdAt
+        };
 
-  // Load game state from file
-  loadGameState(gameId) {
-    const filePath = path.join(this.SAVE_DIR, `${gameId}.json`);
-    if (!fs.existsSync(filePath)) return null;
+        fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
+    }
 
-    const rawData = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(rawData);
-  }
+    // Load game state from file
+    loadGameState(gameId) {
+        const filePath = path.join(this.SAVE_DIR, `${gameId}.json`);
+        if (!fs.existsSync(filePath)) return null;
+
+        const rawData = fs.readFileSync(filePath, 'utf-8');
+        return JSON.parse(rawData);
+    }
 
 
-  // Initialize game from saved state (if available)
-  initializeGame(gameId) {
-    const savedState = this.loadGameState(gameId);
-    if (!savedState) return null;
+    // Initialize game from saved state (if available)
+    initializeGame(gameId) {
+        const savedState = this.loadGameState(gameId);
+        if (!savedState) return null;
 
-    // Restore game state with proper defaults
-    const restoredGame = {
-        ...savedState,
-        // Players need socket-related properties initialized
-        players: savedState.players.map(p => ({
-            ...p,
-            id: null,  // Will be set when player rejoins
-            disconnected: true,
-            disconnectTimer: null,
-            // Ensure all required player properties exist
-            tokens: p.tokens || [],
-            colors: p.colors || (p.playerIndex === 0 ? ['red', 'yellow'] : ['green', 'blue'])
-        })),
-        
-        // Initialize volatile properties
-        playerSockets: {},
-        lastActivity: Date.now(),
-        
-        // Ensure game flow properties exist
-        currentRolls: savedState.currentRolls || [],
-        rolledValue: savedState.rolledValue || [],
-        diceValue: savedState.diceValue || 0,
-     
-        
-        // Initialize timers and AI if needed
-        aiTimer: null,
-        
-        // Ensure tokens exist and are properly formatted
-        tokens: savedState.tokens || Logic.initializeTokens()
-    };
+        // Restore game state with proper defaults
+        const restoredGame = {
+            ...savedState,
+            // Players need socket-related properties initialized
+            players: savedState.players.map(p => ({
+                ...p,
+                id: null,  // Will be set when player rejoins
+                disconnected: true,
+                disconnectTimer: null,
+                // Ensure all required player properties exist
+                tokens: p.tokens || [],
+                colors: p.colors || (p.playerIndex === 0 ? ['red', 'yellow'] : ['green', 'blue'])
+            })),
 
-    this.games[gameId] = restoredGame;
-    console.log(`Successfully loaded game ${gameId} from saved state`);
-    return restoredGame;
-}
+            // Initialize volatile properties
+            playerSockets: {},
+            lastActivity: Date.now(),
+
+            // Ensure game flow properties exist
+            currentRolls: savedState.currentRolls || [],
+            rolledValue: savedState.rolledValue || [],
+            diceValue: savedState.diceValue || 0,
+
+
+            // Initialize timers and AI if needed
+            aiTimer: null,
+
+            // Ensure tokens exist and are properly formatted
+            tokens: savedState.tokens || Logic.initializeTokens()
+        };
+
+        this.games[gameId] = restoredGame;
+        console.log(`Successfully loaded game ${gameId} from saved state`);
+        return restoredGame;
+    }
 
 
     /**
@@ -176,7 +176,7 @@ class GameService {
 
         // Validate game exists and has room
         if (!game) throw new Error('Game does not exist');
-        
+
 
         // Check if player was already in the game (reconnecting)
         const existingPlayer = game.players.find(p => p.playerId === playerId);
@@ -354,93 +354,83 @@ class GameService {
     handleDisconnect(socketId) {
         const gameId = this.playerSockets[socketId];
         const game = this.games[gameId];
+        if (!game) return null;
 
-        // Remove socket association
         delete this.playerSockets[socketId];
 
-        if (game) {
-            // Don't immediately remove the player to allow for reconnection
-            // Just mark them as disconnected by setting a disconnected flag
-            const player = game.players.find(p => p.id === socketId);
-            if (player) {
-                player.disconnected = true;
+        const player = game.players.find(p => p.id === socketId);
+        if (!player) return gameId;
 
-                // Keep the game alive for a reconnect window (e.g., 10 minutes)
-                player.disconnectTimer = setTimeout(() => {
-                    // After timeout, remove the player
-                    game.players = game.players.filter(p => p.id !== socketId);
+        // Only set timer if it's not already set (prevent multiple timers)
+        if (!player.disconnectTimer) {
+            player.disconnected = true;
+            player.disconnectTimer = setTimeout(() => {
+                const index = game.players.findIndex(p => p.id === socketId);
+                if (index !== -1) {
+                    game.players.splice(index, 1);
 
-                    // Clean up empty games
-                    if (game.players.length === 0 ||
-                        (game.players.length === 1 && game.players[0].id === 'AI')) {
+                    // Only cleanup if no human players left
+                    if (!game.players.some(p => p.id !== 'AI')) {
+                        // Save state before deletion if needed
+                        this.saveGameState(gameId);
                         delete this.games[gameId];
                     }
-                }, 10 * 60 * 1000); // 10 minutes
-            }
+                }
+            }, 60 * 60 * 1000);
         }
-
         return gameId;
     }
 
-    rejoinGame(socketId, gameId, playerId) {
-        // Try to load from file if not in memory
+
+
+
+    // Add this method to GameService class
+    verifyPlayerInGame(gameId, playerId) {
+        // Try to load game if not in memory
         if (!this.games[gameId]) {
             this.initializeGame(gameId);
         }
-        
+
         const game = this.games[gameId];
-        if (!game) throw new Error("Game not found");
+        if (!game) return false;
 
+        // Check if player was in this game
+        return game.players.some(p => p.playerId === playerId);
+    }
+
+    // Modify rejoinGame to be more secure
+    rejoinGame(socketId, gameId, playerId) {
+        // First verify player was in this game
+        if (!this.verifyPlayerInGame(gameId, playerId)) {
+            throw new Error("Player was not part of this game");
+        } else {
+            console.log(`Player ${playerId} verified in game ${gameId}`);
+        }
+
+        const game = this.games[gameId];
         const player = game.players.find(p => p.playerId === playerId);
-        if (!player) throw new Error("Player not in game");
 
-        // Update socket ID and connection status
+        // Update connection info
         player.id = socketId;
         player.disconnected = false;
-        if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
+
+        if (player.disconnectTimer) {
+            clearTimeout(player.disconnectTimer);
+            player.disconnectTimer = null;
+        }
 
         this.playerSockets[socketId] = gameId;
         game.lastActivity = Date.now();
 
-        // Return the client-safe state
+        console.log(`Player ${playerId} reconnected to game ${gameId}`);
+
         return {
-            id: game.id,
-            players: game.players.map(p => ({
-                playerId: p.playerId,
-                playerIndex: p.playerIndex,
-                colors: p.colors
-            })),
-            tokens: game.tokens,
-            currentPlayer: game.currentPlayer,
-            diceValue: game.diceValue,
-            gameOver: game.gameOver,
-            rolledValue: game.rolledValue
+            ...this.buildGameState(gameId),
+            playerId,
+            playerIndex: player.playerIndex,
+            colors: player.colors
         };
     }
-
-
-    // handleDisconnect(socketId) {
-    //     const gameId = this.playerSockets[socketId];
-    //     const game = this.games[gameId];
-
-    //     delete this.playerSockets[socketId];
-
-    //     if (game) {
-    //         const player = game.players.find(p => p.id === socketId);
-    //         if (player) {
-    //             player.disconnected = true;
-    //             player.disconnectTimer = setTimeout(() => {
-    //                 game.players = game.players.filter(p => p.id !== socketId);
-    //                 if (game.players.length === 0 || (game.players.length === 1 && game.players[0].id === 'AI')) {
-    //                     delete this.games[gameId];
-    //                 }
-    //             }, 10 * 60 * 1000); // 10-minute timeout
-    //         }
-    //     }
-
-    //     return gameId;
-    // }
-
 
 
     handleDisconnect(socketId) {
@@ -470,16 +460,21 @@ class GameService {
         return gameId;
     }
 
+
+
     cleanupOldGames() {
         const now = Date.now();
-        const staleTime = 42 * 60 * 60 * 1000; // 42 hours
+        const staleTime = 42 * 60 * 60 * 1000; // 42 hours (more conservative)
 
-        for (const gameId in this.games) {
-            const game = this.games[gameId];
+        Object.entries(this.games).forEach(([gameId, game]) => {
             if (now - game.lastActivity > staleTime) {
-                delete this.games[gameId];
+                // Only delete if game is inactive AND has no recent players
+                if (game.players.every(p => p.disconnected)) {
+                    this.saveGameState(gameId); // Optional: save final state
+                    delete this.games[gameId];
+                }
             }
-        }
+        });
     }
 
 
@@ -514,14 +509,15 @@ class GameService {
             };
         });
 
-      
+
+
         return {
-        id: g.id,
-        tokens,
-        dice: g.rolledValue || [],
-        currentPlayer: g.currentPlayer, // Added
-        gameOver: g.gameOver // Added
-    };
+            id: g.id,
+            tokens,
+            dice: g.rolledValue || [],
+            currentPlayer: g.currentPlayer, // Added
+            gameOver: g.gameOver // Added
+        };
     }
 
 

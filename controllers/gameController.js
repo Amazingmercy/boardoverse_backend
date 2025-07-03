@@ -38,7 +38,7 @@ class GameController {
         }
     }
 
-  
+
 
     generateBoardPaths(cb) {
         try {
@@ -60,7 +60,7 @@ class GameController {
             const game = this.service.joinGame(this.socket.id, gameId, playerId);
             this.socket.join(game.id);
             const p = game.players.find((p) => p.id === this.socket.id || p.playerId === playerId);
-            
+
             // If reconnecting, update socket ID
             if (p.playerId === playerId && p.id !== this.socket.id) {
                 p.id = this.socket.id; // Update to new socket ID
@@ -75,21 +75,31 @@ class GameController {
         }
     }
 
-    rejoinGame({ playerId, gameId }, cb) {
+
+    rejoinGame({ gameId, playerId }, cb) {
         try {
             const game = this.service.rejoinGame(this.socket.id, gameId, playerId);
             this.socket.join(game.id);
-            const player = game.players.find(p => p.playerId === playerId);
-            
-            cb({ 
+
+
+            cb({
                 success: true,
                 gameId: game.id,
                 playerId,
-                colors: player.colors
+                playerIndex: game.playerIndex,
+                colors: game.colors,
+                tokens: game.tokens,
+                dice: game.dice,
+                currentPlayer: game.currentPlayer,
+                gameOver: game.gameOver,
             });
+
             this.broadcastState(game);
         } catch (e) {
-            cb({ error: e.message });
+            cb({
+                success: false,
+                error: e.message
+            });
         }
     }
 
@@ -97,32 +107,32 @@ class GameController {
 
 
     rollDice({ gameId }) {
-    try {
-        const playerId = this.socket.handshake.auth.playerId; // Make sure this is set on connection
-        // console.log(this.socket.handshake)
-        
-        if (!playerId) {
-            throw new Error("Player authentication missing");
-        }
+        try {
+            const playerId = this.socket.handshake.auth.playerId; // Make sure this is set on connection
+            // console.log(this.socket.handshake)
 
-        const game = this.service.rollDice(gameId, playerId);
-        this.broadcastDice(game);
-        this.broadcastState(game);
-        
-    } catch (error) {
-        console.error("Roll dice error:", error);
-        this.socket.emit("game_error", {
-            action: "roll_dice",
-            message: error.message,
-            isTurnError: error.message.includes("Not your turn")
-        });
-        
-        // Special case: If player not found, force reconnect
-        if (error.message.includes("Player not found")) {
-            console.log("force_reconnect");
+            if (!playerId) {
+                throw new Error("Player authentication missing");
+            }
+
+            const game = this.service.rollDice(gameId, playerId);
+            this.broadcastDice(game);
+            this.broadcastState(game);
+
+        } catch (error) {
+            console.error("Roll dice error:", error);
+            this.socket.emit("game_error", {
+                action: "roll_dice",
+                message: error.message,
+                isTurnError: error.message.includes("Not your turn")
+            });
+
+            // Special case: If player not found, force reconnect
+            if (error.message.includes("Player not found")) {
+                console.log("force_reconnect");
+            }
         }
     }
-}
 
     playRoll({ tokenId, rolledValue, gameId }) {
         try {
@@ -195,7 +205,7 @@ class GameController {
             const player = game.players.find((p) => p.id === socketId);
             const playerIndex = player ? player.playerIndex : -1;
 
-            console.log("Compose", game)
+
 
             const playData = {
                 tokens: base.tokens,

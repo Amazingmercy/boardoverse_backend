@@ -26,26 +26,6 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 
-// Endpoint to fetch game state
-app.get('/api/game/:gameId', (req, res) => {
-  const gameId = req.params.gameId;
-  const gameState = gameService.loadGameState(gameId);
-
-  if (!gameState) {
-    return res.status(404).json({ error: "Game not found" });
-  }
-
-  // Send sanitized state (no sensitive data)
-  res.json({
-    id: gameState.id,
-    players: gameState.players,
-    tokens: gameState.tokens,
-    currentPlayer: gameState.currentPlayer,
-    diceValue: gameState.diceValue,
-    gameOver: gameState.gameOver
-  });
-});
-
 
 
 app.get('/documentation', (req, res) => {
