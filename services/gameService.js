@@ -428,7 +428,9 @@ class GameService {
             ...this.buildGameState(gameId),
             playerId,
             playerIndex: player.playerIndex,
-            colors: player.colors
+            colors: player.colors,
+            myTurn: game.currentPlayer === player.playerIndex,
+            gameOver: game.gameOver,
         };
     }
 
